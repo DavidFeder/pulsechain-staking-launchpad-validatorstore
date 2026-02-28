@@ -9,8 +9,9 @@
   <style>body { font-family: system-ui, sans-serif; }</style>
 </head>
 <body class="bg-black text-white min-h-screen">
-  <div class="max-w-4xl mx-auto p-8">
 
+  <main class="max-w-4xl mx-auto p-8">
+    
     <!-- Header -->
     <div class="flex justify-between items-center mb-12">
       <a href="https://pulsechain.com" target="_blank" class="flex items-center gap-4">
@@ -24,7 +25,7 @@
 
     <!-- Connect -->
     <div class="bg-zinc-950 border border-cyan-900 rounded-3xl p-8 mb-8">
-      <button id="connectBtn" class="w-full bg-gradient-to-r from-purple-600 via-cyan-500 to-cyan-400 hover:from-purple-700 hover:via-cyan-600 hover:to-cyan-500 py-5 rounded-2xl text-2xl font-bold transition">
+      <button id="connectBtn" type="button" class="w-full bg-gradient-to-r from-purple-600 via-cyan-500 to-cyan-400 hover:from-purple-700 hover:via-cyan-600 hover:to-cyan-500 py-5 rounded-2xl text-2xl font-bold transition">
         Connect MetaMask
       </button>
       <div id="balance" class="mt-4 text-center text-cyan-400 font-medium text-lg"></div>
@@ -46,15 +47,16 @@
       <div id="validatorList" class="space-y-4"></div>
     </div>
 
-    <!-- Footer -->
-    <div class="text-center mt-20 text-xs text-gray-500">
-      Built for <a href="https://www.validatorstore.com/" target="_blank" class="text-cyan-400 hover:text-cyan-300">ValidatorStore.com</a> • PulseChain Validator Hardware<br>
-      <span class="text-[10px]">Questions? david@validatorstore.com</span>
-    </div>
-  </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="text-center mt-20 text-xs text-gray-500 pb-8">
+    Built for <a href="https://www.validatorstore.com/" target="_blank" class="text-cyan-400 hover:text-cyan-300">ValidatorStore.com</a> • PulseChain Validator Hardware<br>
+    <span class="text-[10px]">Questions? david@validatorstore.com</span>
+  </footer>
 
   <script>
-    console.log("=== PulseChain Staking — v28 ===");
+    console.log("=== PulseChain Staking — v29 FINAL (Improved Structure) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const fileInput = document.getElementById('fileInput');
