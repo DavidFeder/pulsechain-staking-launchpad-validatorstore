@@ -2,7 +2,7 @@
 
 **Simple • Safe • Single-file staking tool for PulseChain**
 
-Built specifically for customers of **[ValidatorStore.com](https://www.validatorstore.com/)** — the trusted source for PulseChain validator hardware.
+Built specifically for customers of **[ValidatorStore.com](https://www.validatorstore.com/)** — the highest quality source for PulseChain validator hardware.
 
 ### Features
 
@@ -12,7 +12,7 @@ Built specifically for customers of **[ValidatorStore.com](https://www.validator
 - Shows which validators are **Ready for deposit** or **Already Deposited**
 - "Check on g4mm4.io" button for every validator
 - One-click deposits (32,000,000 PLS each)
-- 100% client-side — nothing is sent to any server
+- 100% client-side - runs locally on your PC
 
 ### How to use
 
