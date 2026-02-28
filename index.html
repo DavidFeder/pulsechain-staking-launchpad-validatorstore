@@ -55,7 +55,7 @@
   </footer>
 
   <script>
-    console.log("=== PulseChain Staking — v29 FINAL (Improved Structure) ===");
+    console.log("=== PulseChain Staking — v30 FINAL (Smart Gas Estimation) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const fileInput = document.getElementById('fileInput');
@@ -69,20 +69,30 @@
     let depositsData = [];
     let provider = null;
 
-    async function addAndSwitchChain() {
+    async function ensurePulseChainNetwork() {
+      const targetChainId = '0x171';
       try {
-        await window.ethereum.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: '0x171',
-            chainName: 'PulseChain',
-            nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
-            rpcUrls: ['https://rpc-pulsechain.g4mm4.io'],
-            blockExplorerUrls: ['https://otter-pulsechain.g4mm4.io/']
-          }]
-        });
-      } catch (e) {}
-      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x171' }] });
+        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: targetChainId }] });
+        return true;
+      } catch (switchError) {
+        if (switchError.code === 4902) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [{
+                chainId: targetChainId,
+                chainName: 'PulseChain',
+                nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
+                rpcUrls: ['https://rpc-pulsechain.g4mm4.io'],
+                blockExplorerUrls: ['https://otter-pulsechain.g4mm4.io/']
+              }]
+            });
+            await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: targetChainId }] });
+            return true;
+          } catch (addError) { return false; }
+        }
+        return false;
+      }
     }
 
     connectBtn.addEventListener('click', async () => {
@@ -91,7 +101,10 @@
         connectStatus.textContent = "Connecting...";
         const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
         userAddress = accounts[0];
-        await addAndSwitchChain();
+        if (!(await ensurePulseChainNetwork())) {
+          connectStatus.innerHTML = `<span class="text-red-500">Network setup cancelled</span>`;
+          return;
+        }
         provider = new ethers.providers.Web3Provider(window.ethereum);
         const bal = await provider.getBalance(userAddress);
         const pls = parseFloat(ethers.utils.formatEther(bal));
@@ -122,7 +135,6 @@
       validatorListDiv.innerHTML = '';
       resultsDiv.classList.remove('hidden');
       let readyCount = 0;
-
       deposits.forEach((deposit, index) => {
         const pubkey = cleanHex(deposit.pubkey || deposit.public_key || "");
         const div = document.createElement('div');
@@ -131,8 +143,7 @@
           <div class="flex-1">
             <div class="flex items-center gap-3">
               <span class="text-xs bg-zinc-900 px-3 py-1 rounded-full">Validator #${index+1}</span>
-              <button onclick="checkValidator('${pubkey}')" 
-                      class="text-xs px-3 py-1 border border-cyan-700 hover:border-cyan-400 rounded-xl text-cyan-400 hover:bg-cyan-950 transition">
+              <button onclick="checkValidator('${pubkey}')" class="text-xs px-3 py-1 border border-cyan-700 hover:border-cyan-400 rounded-xl text-cyan-400 hover:bg-cyan-950 transition">
                 Check on g4mm4.io
               </button>
             </div>
@@ -150,11 +161,9 @@
       const statusEl = document.getElementById(`status-${index}`);
       const btn = document.getElementById(`btn-${index}`);
       let pubkey = cleanHex(rawPubkey);
-
       try {
         let response = await fetch(`https://rpc-pulsechain.g4mm4.io/beacon-api/eth/v1/beacon/states/head/validators/${pubkey}`);
         if (response.status === 400) response = await fetch(`https://rpc-pulsechain.g4mm4.io/beacon-api/eth/v1/beacon/states/head/validators/${pubkey.slice(2)}`);
-
         if (response.ok) {
           const json = await response.json();
           if (json.data && json.data.validator) {
@@ -165,16 +174,11 @@
             return;
           }
         }
-        statusEl.innerHTML = `<span class="text-cyan-400">Ready for deposit ✅</span>`;
-        btn.textContent = "Deposit with MetaMask";
-        btn.classList.add('bg-gradient-to-r', 'from-purple-600', 'via-cyan-500', 'to-cyan-400', 'hover:from-purple-700', 'hover:via-cyan-600', 'hover:to-cyan-500');
-        callback();
-      } catch (err) {
-        statusEl.innerHTML = `<span class="text-cyan-400">Ready for deposit ✅</span>`;
-        btn.textContent = "Deposit with MetaMask";
-        btn.classList.add('bg-gradient-to-r', 'from-purple-600', 'via-cyan-500', 'to-cyan-400', 'hover:from-purple-700', 'hover:via-cyan-600', 'hover:to-cyan-500');
-        callback();
-      }
+      } catch (e) {}
+      statusEl.innerHTML = `<span class="text-cyan-400">Ready for deposit ✅</span>`;
+      btn.textContent = "Deposit with MetaMask";
+      btn.classList.add('bg-gradient-to-r', 'from-purple-600', 'via-cyan-500', 'to-cyan-400', 'hover:from-purple-700', 'hover:via-cyan-600', 'hover:to-cyan-500');
+      callback();
     }
 
     function cleanHex(str) {
@@ -191,6 +195,7 @@
       window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
     };
 
+    // v30 — Smart gas estimation (exactly like official launchpad behaviour)
     window.makeDeposit = async function(index) {
       if (!userAddress) return alert("Please connect MetaMask first");
       const deposit = depositsData[index];
@@ -211,7 +216,7 @@
       if (!confirm(`Deposit 32,000,000 PLS for Validator #${index+1}?`)) return;
 
       const statusDiv = document.getElementById(`status-${index}`);
-      statusDiv.innerHTML = `<span class="text-yellow-400">Sending transaction...</span>`;
+      statusDiv.innerHTML = `<span class="text-yellow-400">Estimating gas...</span>`;
 
       try {
         const signer = provider.getSigner();
@@ -221,9 +226,16 @@
           signer
         );
 
+        const estimatedGas = await contract.estimateGas.deposit(
+          pubkey, withdrawalCredentials, signature, depositDataRoot,
+          { value: ethers.utils.parseEther("32000000") }
+        );
+
+        const gasLimit = Math.floor(estimatedGas.toNumber() * 1.5); // 50% safe buffer
+
         const tx = await contract.deposit(pubkey, withdrawalCredentials, signature, depositDataRoot, {
           value: ethers.utils.parseEther("32000000"),
-          gasLimit: 30000000
+          gasLimit: gasLimit
         });
 
         statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
