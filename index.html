@@ -47,13 +47,13 @@
 
     <!-- Footer -->
     <div class="text-center mt-20 text-xs text-gray-500">
-      Built by <a href="https://www.validatorstore.com/" target="_blank" class="text-cyan-400 hover:text-cyan-300">ValidatorStore.com</a> • Free and Open Source forever<br>
-      <span class="text-[10px]">Submit a bug report - need to add github link later </span>
+      Built for <a href="https://www.validatorstore.com/" target="_blank" class="text-cyan-400 hover:text-cyan-300">ValidatorStore.com</a> • PulseChain Validator Hardware<br>
+      <span class="text-[10px]">Questions? david@validatorstore.com</span>
     </div>
   </div>
 
   <script>
-    console.log("=== PulseChain Staking — v27 CHECK BUTTON ON LEFT (small) ===");
+    console.log("=== PulseChain Staking — v28 FINAL (Smart Network + Clean Footer) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const fileInput = document.getElementById('fileInput');
@@ -67,20 +67,40 @@
     let depositsData = [];
     let provider = null;
 
-    async function addAndSwitchChain() {
+    // Smart network detection - only adds if not present
+    async function ensurePulseChainNetwork() {
+      const targetChainId = '0x171';
       try {
         await window.ethereum.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: '0x171',
-            chainName: 'PulseChain',
-            nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
-            rpcUrls: ['https://rpc-pulsechain.g4mm4.io'],
-            blockExplorerUrls: ['https://otter-pulsechain.g4mm4.io/']
-          }]
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: targetChainId }]
         });
-      } catch (e) {}
-      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x171' }] });
+        return true;
+      } catch (switchError) {
+        if (switchError.code === 4902) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [{
+                chainId: targetChainId,
+                chainName: 'PulseChain',
+                nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
+                rpcUrls: ['https://rpc-pulsechain.g4mm4.io'],
+                blockExplorerUrls: ['https://otter-pulsechain.g4mm4.io/']
+              }]
+            });
+            await window.ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: targetChainId }]
+            });
+            return true;
+          } catch (addError) {
+            console.error("Failed to add network:", addError);
+            return false;
+          }
+        }
+        return false;
+      }
     }
 
     connectBtn.addEventListener('click', async () => {
@@ -89,10 +109,17 @@
         connectStatus.textContent = "Connecting...";
         const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
         userAddress = accounts[0];
-        await addAndSwitchChain();
+
+        const success = await ensurePulseChainNetwork();
+        if (!success) {
+          connectStatus.innerHTML = `<span class="text-red-500">Network setup cancelled</span>`;
+          return;
+        }
+
         provider = new ethers.providers.Web3Provider(window.ethereum);
         const bal = await provider.getBalance(userAddress);
         const pls = parseFloat(ethers.utils.formatEther(bal));
+
         connectStatus.innerHTML = `<span class="text-cyan-400">✅ Connected • ${userAddress.slice(0,6)}...${userAddress.slice(-4)}</span>`;
         balanceDiv.textContent = `Balance: ${pls.toFixed(4)} PLS`;
         connectBtn.textContent = "Connected ✓";
