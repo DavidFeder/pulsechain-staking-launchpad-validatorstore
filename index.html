@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PulseChain Validator Staking Launchpad • ValidatorStore</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+  <style>body { font-family: system-ui, sans-serif; }</style>
+</head>
+<body class="bg-black text-white min-h-screen">
+  <div class="max-w-4xl mx-auto p-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-12">
+      <a href="https://pulsechain.com" target="_blank" class="flex items-center gap-4">
+        <img src="LogoTransparent.png" alt="PulseChain" class="h-14 w-auto">
+      </a>
+      <div class="text-right">
+        <div class="text-xs text-cyan-400 font-medium">PulseChain Validator Staking Launchpad</div>
+        <div id="connectStatus" class="text-sm"></div>
+      </div>
+    </div>
+
+    <!-- Connect -->
+    <div class="bg-zinc-950 border border-cyan-900 rounded-3xl p-8 mb-8">
+      <button id="connectBtn" class="w-full bg-gradient-to-r from-purple-600 via-cyan-500 to-cyan-400 hover:from-purple-700 hover:via-cyan-600 hover:to-cyan-500 py-5 rounded-2xl text-2xl font-bold transition">
+        Connect MetaMask
+      </button>
+      <div id="balance" class="mt-4 text-center text-cyan-400 font-medium text-lg"></div>
+    </div>
+
+    <!-- Upload -->
+    <div class="bg-zinc-950 border border-cyan-900 rounded-3xl p-8 mb-8">
+      <label class="block text-sm font-medium mb-3 text-cyan-300">Upload your deposit_data-*.json file</label>
+      <input type="file" id="fileInput" accept=".json"
+             class="block w-full text-sm text-gray-400 file:mr-4 file:py-4 file:px-8 file:rounded-2xl file:border-0 file:text-base file:font-semibold file:bg-gradient-to-r file:from-purple-600 file:via-cyan-500 file:to-cyan-400 file:text-white hover:file:brightness-110 cursor-pointer">
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-3xl font-bold text-white">Your Validators</h2>
+        <div id="summary" class="text-cyan-400 text-2xl font-bold"></div>
+      </div>
+      <div id="validatorList" class="space-y-4"></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="text-center mt-20 text-xs text-gray-500">
+      Built by <a href="https://www.validatorstore.com/" target="_blank" class="text-cyan-400 hover:text-cyan-300">ValidatorStore.com</a> • Free and Open Source forever<br>
+      <span class="text-[10px]">Submit a bug report - need to add github link later </span>
+    </div>
+  </div>
+
+  <script>
+    console.log("=== PulseChain Staking — v27 CHECK BUTTON ON LEFT (small) ===");
+
+    const connectBtn = document.getElementById('connectBtn');
+    const fileInput = document.getElementById('fileInput');
+    const resultsDiv = document.getElementById('results');
+    const validatorListDiv = document.getElementById('validatorList');
+    const summaryDiv = document.getElementById('summary');
+    const balanceDiv = document.getElementById('balance');
+    const connectStatus = document.getElementById('connectStatus');
+
+    let userAddress = null;
+    let depositsData = [];
+    let provider = null;
+
+    async function addAndSwitchChain() {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: '0x171',
+            chainName: 'PulseChain',
+            nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
+            rpcUrls: ['https://rpc-pulsechain.g4mm4.io'],
+            blockExplorerUrls: ['https://otter-pulsechain.g4mm4.io/']
+          }]
+        });
+      } catch (e) {}
+      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x171' }] });
+    }
+
+    connectBtn.addEventListener('click', async () => {
+      if (!window.ethereum) return alert("MetaMask not found.");
+      try {
+        connectStatus.textContent = "Connecting...";
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        userAddress = accounts[0];
+        await addAndSwitchChain();
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        const bal = await provider.getBalance(userAddress);
+        const pls = parseFloat(ethers.utils.formatEther(bal));
+        connectStatus.innerHTML = `<span class="text-cyan-400">✅ Connected • ${userAddress.slice(0,6)}...${userAddress.slice(-4)}</span>`;
+        balanceDiv.textContent = `Balance: ${pls.toFixed(4)} PLS`;
+        connectBtn.textContent = "Connected ✓";
+        connectBtn.disabled = true;
+      } catch (err) {
+        connectStatus.innerHTML = `<span class="text-red-500">Connection failed</span>`;
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.target.result.trim());
+          depositsData = Array.isArray(parsed) ? parsed : (parsed.data || parsed.validators || []);
+          displayValidators(depositsData);
+        } catch (err) { alert("Invalid deposit_data file."); }
+      };
+      reader.readAsText(file);
+    });
+
+    function displayValidators(deposits) {
+      validatorListDiv.innerHTML = '';
+      resultsDiv.classList.remove('hidden');
+      let readyCount = 0;
+
+      deposits.forEach((deposit, index) => {
+        const pubkey = cleanHex(deposit.pubkey || deposit.public_key || "");
+        const div = document.createElement('div');
+        div.className = "bg-zinc-950 border border-cyan-900 rounded-2xl p-6 flex items-center";
+        div.innerHTML = `
+          <div class="flex-1">
+            <div class="flex items-center gap-3">
+              <span class="text-xs bg-zinc-900 px-3 py-1 rounded-full">Validator #${index+1}</span>
+              <button onclick="checkValidator('${pubkey}')" 
+                      class="text-xs px-3 py-1 border border-cyan-700 hover:border-cyan-400 rounded-xl text-cyan-400 hover:bg-cyan-950 transition">
+                Check on g4mm4.io
+              </button>
+            </div>
+            <div class="font-mono text-sm text-cyan-400 break-all mt-2">${pubkey.slice(0,22)}...${pubkey.slice(-22)}</div>
+            <div id="status-${index}" class="text-sm mt-3 font-medium"></div>
+          </div>
+          <button id="btn-${index}" onclick="makeDeposit(${index})" class="px-10 py-4 rounded-2xl font-bold text-base"></button>
+        `;
+        validatorListDiv.appendChild(div);
+        checkPubkeyUsed(index, pubkey, () => { readyCount++; updateSummary(readyCount, deposits.length); });
+      });
+    }
+
+    async function checkPubkeyUsed(index, rawPubkey, callback) {
+      const statusEl = document.getElementById(`status-${index}`);
+      const btn = document.getElementById(`btn-${index}`);
+      let pubkey = cleanHex(rawPubkey);
+
+      try {
+        let response = await fetch(`https://rpc-pulsechain.g4mm4.io/beacon-api/eth/v1/beacon/states/head/validators/${pubkey}`);
+        if (response.status === 400) response = await fetch(`https://rpc-pulsechain.g4mm4.io/beacon-api/eth/v1/beacon/states/head/validators/${pubkey.slice(2)}`);
+
+        if (response.ok) {
+          const json = await response.json();
+          if (json.data && json.data.validator) {
+            statusEl.innerHTML = `<span class="text-red-400">Already Deposited ❌</span>`;
+            btn.textContent = "Already Deposited";
+            btn.classList.add('bg-red-700', 'cursor-not-allowed');
+            btn.disabled = true;
+            return;
+          }
+        }
+        statusEl.innerHTML = `<span class="text-cyan-400">Ready for deposit ✅</span>`;
+        btn.textContent = "Deposit with MetaMask";
+        btn.classList.add('bg-gradient-to-r', 'from-purple-600', 'via-cyan-500', 'to-cyan-400', 'hover:from-purple-700', 'hover:via-cyan-600', 'hover:to-cyan-500');
+        callback();
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-cyan-400">Ready for deposit ✅</span>`;
+        btn.textContent = "Deposit with MetaMask";
+        btn.classList.add('bg-gradient-to-r', 'from-purple-600', 'via-cyan-500', 'to-cyan-400', 'hover:from-purple-700', 'hover:via-cyan-600', 'hover:to-cyan-500');
+        callback();
+      }
+    }
+
+    function cleanHex(str) {
+      if (!str) return "0x";
+      str = str.trim();
+      return str.startsWith("0x") ? str : "0x" + str;
+    }
+
+    function updateSummary(readyCount, total) {
+      summaryDiv.textContent = `${readyCount} of ${total} ready for deposit`;
+    }
+
+    window.checkValidator = function(pubkey) {
+      window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
+    };
+
+    window.makeDeposit = async function(index) {
+      if (!userAddress) return alert("Please connect MetaMask first");
+      const deposit = depositsData[index];
+      const btn = document.getElementById(`btn-${index}`);
+      if (btn.disabled) return;
+
+      const pubkey = cleanHex(deposit.pubkey || deposit.public_key || "");
+      const withdrawalCredentials = cleanHex(deposit.withdrawal_credentials || "");
+      const signature = cleanHex(deposit.signature || "");
+      const depositDataRoot = cleanHex(deposit.deposit_data_root || deposit.deposit_message_root || "");
+
+      const balance = await provider.getBalance(userAddress);
+      const plsBalance = parseFloat(ethers.utils.formatEther(balance));
+      if (plsBalance < 32000000.01) {
+        return alert(`Not enough PLS!\n\nYou have ${plsBalance.toFixed(4)} PLS\nNeed at least 32,000,000.01 PLS`);
+      }
+
+      if (!confirm(`Deposit 32,000,000 PLS for Validator #${index+1}?`)) return;
+
+      const statusDiv = document.getElementById(`status-${index}`);
+      statusDiv.innerHTML = `<span class="text-yellow-400">Sending transaction...</span>`;
+
+      try {
+        const signer = provider.getSigner();
+        const contract = new ethers.Contract(
+          "0x3693693693693693693693693693693693693693",
+          ["function deposit(bytes calldata pubkey, bytes calldata withdrawal_credentials, bytes calldata signature, bytes32 deposit_data_root) payable"],
+          signer
+        );
+
+        const tx = await contract.deposit(pubkey, withdrawalCredentials, signature, depositDataRoot, {
+          value: ethers.utils.parseEther("32000000"),
+          gasLimit: 30000000
+        });
+
+        statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
+        await tx.wait();
+        statusDiv.innerHTML = `<span class="text-cyan-400">✅ Deposit confirmed!</span>`;
+        btn.textContent = "Deposited ✓";
+        btn.classList.add('bg-zinc-800', 'cursor-not-allowed');
+        btn.disabled = true;
+      } catch (err) {
+        console.error(err);
+        statusDiv.innerHTML = `<span class="text-red-500">Transaction failed</span>`;
+        alert("Transaction failed. Check MetaMask and try again.");
+      }
+    };
+  </script>
+</body>
+</html>
