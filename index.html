@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PulseChain Validator Staking Launchpad • ValidatorStore</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+  <!-- ethers v5.8.0 LOCAL (offline after first download) -->
+  <script src="ethers.umd.min.js"></script>
   <style>body { font-family: system-ui, sans-serif; }</style>
 </head>
 <body class="bg-black text-white min-h-screen">
@@ -53,7 +54,7 @@
   </div>
 
   <script>
-    console.log("=== PulseChain Staking — v28 FINAL (Smart Network + Clean Footer) ===");
+    console.log("=== PulseChain Staking — v28 FINAL (ethers v5.8.0 local + Smart Network) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const fileInput = document.getElementById('fileInput');
@@ -67,7 +68,7 @@
     let depositsData = [];
     let provider = null;
 
-    // Smart network detection - only adds if not present
+    // Smart network - only adds if not present (no repeated prompt)
     async function ensurePulseChainNetwork() {
       const targetChainId = '0x171';
       try {
