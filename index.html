@@ -26,14 +26,12 @@
     <!-- Connect -->
     <div class="bg-zinc-950 border border-cyan-900 rounded-3xl p-8 mb-8">
       <div class="text-center mb-4 text-cyan-400 font-medium">
-        Recommended: <a href="https://internetmoney.io" target="_blank" class="underline hover:text-cyan-300">Internet Money Wallet</a> (native PulseChain)
+        Recommended: <a href="https://internetmoney.io" target="_blank" class="underline hover:text-cyan-300">Internet Money Wallet</a>
       </div>
       <button id="connectBtn" type="button" class="w-full bg-gradient-to-r from-purple-600 via-cyan-500 to-cyan-400 hover:from-purple-700 hover:via-cyan-600 hover:to-cyan-500 py-5 rounded-2xl text-2xl font-bold transition">
         Connect Internet Money Wallet
       </button>
-      <div class="text-center mt-3 text-xs text-gray-400">
-        (MetaMask also works as fallback)
-      </div>
+      <button id="disconnectBtn" onclick="disconnectWallet()" class="hidden w-full mt-3 text-sm text-red-400 hover:text-red-300">Disconnect Wallet</button>
       <div id="balance" class="mt-4 text-center text-cyan-400 font-medium text-lg"></div>
     </div>
 
@@ -61,9 +59,10 @@
   </footer>
 
   <script>
-    console.log("=== PulseChain Staking — v36 (Internet Money Wallet Optimized) ===");
+    console.log("=== PulseChain Staking — v37 (Disconnect + Reconnect) ===");
 
     const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
     const fileInput = document.getElementById('fileInput');
     const resultsDiv = document.getElementById('results');
     const validatorListDiv = document.getElementById('validatorList');
@@ -101,7 +100,7 @@
       }
     }
 
-    connectBtn.addEventListener('click', async () => {
+    async function connectWallet() {
       if (!window.ethereum) return alert("Wallet not found.\n\nPlease install Internet Money Wallet from https://internetmoney.io");
       try {
         connectStatus.textContent = "Connecting...";
@@ -118,13 +117,39 @@
         balanceDiv.textContent = `Balance: ${pls.toFixed(4)} PLS`;
         connectBtn.textContent = "Connected ✓";
         connectBtn.disabled = true;
+        disconnectBtn.classList.remove('hidden');
       } catch (err) {
         connectStatus.innerHTML = `<span class="text-red-500">Connection failed</span>`;
       }
-    });
+    }
 
-    // ... (the rest of the file is identical to v34 raw transaction version - fileInput, displayValidators, checkPubkeyUsed, cleanHex, updateSummary, checkValidator, and makeDeposit with raw eth_sendTransaction)
+    window.disconnectWallet = async function() {
+      userAddress = null;
+      provider = null;
+      connectBtn.textContent = "Connect Internet Money Wallet";
+      connectBtn.disabled = false;
+      disconnectBtn.classList.add('hidden');
+      balanceDiv.textContent = '';
+      connectStatus.textContent = '';
+      resultsDiv.classList.add('hidden');
+      validatorListDiv.innerHTML = '';
+    };
 
+    connectBtn.addEventListener('click', connectWallet);
+
+    // Auto-reconnect if wallet changes account
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length > 0) {
+          userAddress = accounts[0];
+          connectStatus.innerHTML = `<span class="text-cyan-400">✅ Connected • ${userAddress.slice(0,6)}...${userAddress.slice(-4)}</span>`;
+        } else {
+          disconnectWallet();
+        }
+      });
+    }
+
+    // Rest of the code (file upload, display, deposit, etc.) remains the same as v36
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -203,7 +228,6 @@
       window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
     };
 
-    // Raw legacy transaction (works perfectly with Internet Money Wallet)
     window.makeDeposit = async function(index) {
       if (!userAddress) return alert("Please connect Internet Money Wallet first");
       const deposit = depositsData[index];
