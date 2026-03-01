@@ -55,7 +55,7 @@
   </footer>
 
   <script>
-    console.log("=== PulseChain Staking — v33 FINAL (Raw Legacy Transaction) ===");
+    console.log("=== PulseChain Staking — v34 FINAL (Raw eth_sendTransaction) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const fileInput = document.getElementById('fileInput');
@@ -68,7 +68,6 @@
     let userAddress = null;
     let depositsData = [];
     let provider = null;
-    let signer = null;
 
     async function ensurePulseChainNetwork() {
       const targetChainId = '0x171';
@@ -107,7 +106,6 @@
           return;
         }
         provider = new ethers.providers.Web3Provider(window.ethereum);
-        signer = provider.getSigner();
         const bal = await provider.getBalance(userAddress);
         const pls = parseFloat(ethers.utils.formatEther(bal));
         connectStatus.innerHTML = `<span class="text-cyan-400">✅ Connected • ${userAddress.slice(0,6)}...${userAddress.slice(-4)}</span>`;
@@ -197,9 +195,9 @@
       window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
     };
 
-    // v33 — RAW legacy transaction (bypasses MetaMask EIP-1559 modal bug)
+    // v34 — RAW eth_sendTransaction (bypasses MetaMask bug completely)
     window.makeDeposit = async function(index) {
-      if (!userAddress || !signer) return alert("Please connect MetaMask first");
+      if (!userAddress) return alert("Please connect MetaMask first");
       const deposit = depositsData[index];
       const btn = document.getElementById(`btn-${index}`);
       if (btn.disabled) return;
@@ -221,25 +219,31 @@
       statusDiv.innerHTML = `<span class="text-yellow-400">Sending transaction...</span>`;
 
       try {
-        const contractInterface = new ethers.utils.Interface([
+        const iface = new ethers.utils.Interface([
           "function deposit(bytes calldata pubkey, bytes calldata withdrawal_credentials, bytes calldata signature, bytes32 deposit_data_root) payable"
         ]);
 
-        const data = contractInterface.encodeFunctionData("deposit", [
-          pubkey, withdrawalCredentials, signature, depositDataRoot
-        ]);
+        const data = iface.encodeFunctionData("deposit", [pubkey, withdrawalCredentials, signature, depositDataRoot]);
 
-        const tx = await signer.sendTransaction({
+        const txParams = {
+          from: userAddress,
           to: "0x3693693693693693693693693693693693693693",
+          value: "0x" + ethers.utils.parseEther("32000000").toBigInt().toString(16),
+          gas: "0x3d090",      // 250,000 decimal
+          gasPrice: "0x3b9aca00", // 1 gwei
           data: data,
-          value: ethers.utils.parseEther("32000000"),
-          gasLimit: 250000,
-          gasPrice: ethers.utils.parseUnits("1", "gwei"),
-          type: 0   // legacy transaction
+          type: "0x0"           // legacy
+        };
+
+        const txHash = await window.ethereum.request({
+          method: "eth_sendTransaction",
+          params: [txParams]
         });
 
-        statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
-        await tx.wait();
+        statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${txHash}" target="_blank" class="underline">View on explorer</a>`;
+
+        // Wait for confirmation
+        const receipt = await provider.waitForTransaction(txHash);
         statusDiv.innerHTML = `<span class="text-cyan-400">✅ Deposit confirmed!</span>`;
         btn.textContent = "Deposited ✓";
         btn.classList.add('bg-zinc-800', 'cursor-not-allowed');
@@ -247,7 +251,7 @@
       } catch (err) {
         console.error(err);
         statusDiv.innerHTML = `<span class="text-red-500">Transaction failed</span>`;
-        alert("Transaction failed. Check MetaMask and try again.");
+        alert("Transaction failed. Check MetaMask and try again.\n\nError: " + (err.message || err));
       }
     };
   </script>
