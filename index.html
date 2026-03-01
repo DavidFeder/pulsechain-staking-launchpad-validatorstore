@@ -59,7 +59,7 @@
   </footer>
 
   <script>
-    console.log("=== PulseChain Staking — v38 (Force Wallet Selector) ===");
+    console.log("=== PulseChain Staking — v39 FINAL (Force Selector + Wallet Crash Handling) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
@@ -105,7 +105,7 @@
       try {
         connectStatus.textContent = "Connecting...";
 
-        // Force fresh account selector popup
+        // Force fresh account selector every time
         await window.ethereum.request({
           method: 'wallet_requestPermissions',
           params: [{ eth_accounts: {} }]
@@ -135,7 +135,6 @@
 
     window.disconnectWallet = async function() {
       try {
-        // Revoke permissions to force fresh selector next time
         await window.ethereum.request({
           method: 'wallet_revokePermissions',
           params: [{ eth_accounts: {} }]
@@ -155,7 +154,17 @@
 
     connectBtn.addEventListener('click', connectWallet);
 
-    // Rest of the app (file upload, validators, deposit, etc.)
+    // Auto-detect account switch in wallet
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length > 0 && accounts[0] !== userAddress) {
+          userAddress = accounts[0];
+          connectStatus.innerHTML = `<span class="text-cyan-400">✅ Connected • ${userAddress.slice(0,6)}...${userAddress.slice(-4)}</span>`;
+        }
+      });
+    }
+
+    // Rest of the code (file upload, validators, raw transaction deposit)
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -288,7 +297,7 @@
       } catch (err) {
         console.error(err);
         statusDiv.innerHTML = `<span class="text-red-500">Transaction failed</span>`;
-        alert("Transaction failed. Check your wallet and try again.");
+        alert("Transaction failed. Check your wallet and try again.\n\nIf you see 'usdPrice' error, close and reopen Internet Money Wallet.");
       }
     };
   </script>
