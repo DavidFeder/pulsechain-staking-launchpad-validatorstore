@@ -55,7 +55,7 @@
   </footer>
 
   <script>
-    console.log("=== PulseChain Staking — v31 FINAL (MetaMask Bug Fix) ===");
+    console.log("=== PulseChain Staking — v32 FINAL (Legacy Transaction Fix) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const fileInput = document.getElementById('fileInput');
@@ -195,7 +195,7 @@
       window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
     };
 
-    // v31 — Fixed MetaMask AdvancedEIP1559Modal crash
+    // v32 — Legacy transaction (type 0) to bypass MetaMask EIP-1559 modal crash
     window.makeDeposit = async function(index) {
       if (!userAddress) return alert("Please connect MetaMask first");
       const deposit = depositsData[index];
@@ -228,7 +228,9 @@
 
         const tx = await contract.deposit(pubkey, withdrawalCredentials, signature, depositDataRoot, {
           value: ethers.utils.parseEther("32000000"),
-          gasLimit: 250000   // Safe, low, matches official behaviour
+          gasLimit: 250000,          // safe buffer (official ~60k)
+          gasPrice: ethers.utils.parseUnits("1", "gwei"), // very low but safe on PulseChain
+          type: "0x0"                // LEGACY TRANSACTION — this fixes the crash
         });
 
         statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
