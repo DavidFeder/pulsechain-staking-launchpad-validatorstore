@@ -55,7 +55,7 @@
   </footer>
 
   <script>
-    console.log("=== PulseChain Staking — v32 FINAL (Legacy Transaction Fix) ===");
+    console.log("=== PulseChain Staking — v33 FINAL (Raw Legacy Transaction) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const fileInput = document.getElementById('fileInput');
@@ -68,6 +68,7 @@
     let userAddress = null;
     let depositsData = [];
     let provider = null;
+    let signer = null;
 
     async function ensurePulseChainNetwork() {
       const targetChainId = '0x171';
@@ -106,6 +107,7 @@
           return;
         }
         provider = new ethers.providers.Web3Provider(window.ethereum);
+        signer = provider.getSigner();
         const bal = await provider.getBalance(userAddress);
         const pls = parseFloat(ethers.utils.formatEther(bal));
         connectStatus.innerHTML = `<span class="text-cyan-400">✅ Connected • ${userAddress.slice(0,6)}...${userAddress.slice(-4)}</span>`;
@@ -195,9 +197,9 @@
       window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
     };
 
-    // v32 — Legacy transaction (type 0) to bypass MetaMask EIP-1559 modal crash
+    // v33 — RAW legacy transaction (bypasses MetaMask EIP-1559 modal bug)
     window.makeDeposit = async function(index) {
-      if (!userAddress) return alert("Please connect MetaMask first");
+      if (!userAddress || !signer) return alert("Please connect MetaMask first");
       const deposit = depositsData[index];
       const btn = document.getElementById(`btn-${index}`);
       if (btn.disabled) return;
@@ -219,18 +221,21 @@
       statusDiv.innerHTML = `<span class="text-yellow-400">Sending transaction...</span>`;
 
       try {
-        const signer = provider.getSigner();
-        const contract = new ethers.Contract(
-          "0x3693693693693693693693693693693693693693",
-          ["function deposit(bytes calldata pubkey, bytes calldata withdrawal_credentials, bytes calldata signature, bytes32 deposit_data_root) payable"],
-          signer
-        );
+        const contractInterface = new ethers.utils.Interface([
+          "function deposit(bytes calldata pubkey, bytes calldata withdrawal_credentials, bytes calldata signature, bytes32 deposit_data_root) payable"
+        ]);
 
-        const tx = await contract.deposit(pubkey, withdrawalCredentials, signature, depositDataRoot, {
+        const data = contractInterface.encodeFunctionData("deposit", [
+          pubkey, withdrawalCredentials, signature, depositDataRoot
+        ]);
+
+        const tx = await signer.sendTransaction({
+          to: "0x3693693693693693693693693693693693693693",
+          data: data,
           value: ethers.utils.parseEther("32000000"),
-          gasLimit: 250000,          // safe buffer (official ~60k)
-          gasPrice: ethers.utils.parseUnits("1", "gwei"), // very low but safe on PulseChain
-          type: "0x0"                // LEGACY TRANSACTION — this fixes the crash
+          gasLimit: 250000,
+          gasPrice: ethers.utils.parseUnits("1", "gwei"),
+          type: 0   // legacy transaction
         });
 
         statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
