@@ -31,7 +31,7 @@
       <button id="connectBtn" type="button" class="w-full bg-gradient-to-r from-purple-600 via-cyan-500 to-cyan-400 hover:from-purple-700 hover:via-cyan-600 hover:to-cyan-500 py-5 rounded-2xl text-2xl font-bold transition">
         Connect Internet Money Wallet
       </button>
-      <button id="disconnectBtn" onclick="disconnectWallet()" class="hidden w-full mt-3 text-sm text-red-400 hover:text-red-300">Disconnect Wallet</button>
+      <button id="disconnectBtn" onclick="disconnectWallet()" class="hidden w-full mt-3 text-sm text-red-400 hover:text-red-300">Disconnect & Switch Wallet</button>
       <div id="balance" class="mt-4 text-center text-cyan-400 font-medium text-lg"></div>
     </div>
 
@@ -59,7 +59,7 @@
   </footer>
 
   <script>
-    console.log("=== PulseChain Staking — v37 (Disconnect + Reconnect) ===");
+    console.log("=== PulseChain Staking — v38 (Force Wallet Selector) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
@@ -104,15 +104,25 @@
       if (!window.ethereum) return alert("Wallet not found.\n\nPlease install Internet Money Wallet from https://internetmoney.io");
       try {
         connectStatus.textContent = "Connecting...";
+
+        // Force fresh account selector popup
+        await window.ethereum.request({
+          method: 'wallet_requestPermissions',
+          params: [{ eth_accounts: {} }]
+        }).catch(() => {});
+
         const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
         userAddress = accounts[0];
+
         if (!(await ensurePulseChainNetwork())) {
           connectStatus.innerHTML = `<span class="text-red-500">Network setup cancelled</span>`;
           return;
         }
+
         provider = new ethers.providers.Web3Provider(window.ethereum);
         const bal = await provider.getBalance(userAddress);
         const pls = parseFloat(ethers.utils.formatEther(bal));
+
         connectStatus.innerHTML = `<span class="text-cyan-400">✅ Connected • ${userAddress.slice(0,6)}...${userAddress.slice(-4)}</span>`;
         balanceDiv.textContent = `Balance: ${pls.toFixed(4)} PLS`;
         connectBtn.textContent = "Connected ✓";
@@ -124,6 +134,14 @@
     }
 
     window.disconnectWallet = async function() {
+      try {
+        // Revoke permissions to force fresh selector next time
+        await window.ethereum.request({
+          method: 'wallet_revokePermissions',
+          params: [{ eth_accounts: {} }]
+        }).catch(() => {});
+      } catch (e) {}
+
       userAddress = null;
       provider = null;
       connectBtn.textContent = "Connect Internet Money Wallet";
@@ -137,19 +155,7 @@
 
     connectBtn.addEventListener('click', connectWallet);
 
-    // Auto-reconnect if wallet changes account
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', (accounts) => {
-        if (accounts.length > 0) {
-          userAddress = accounts[0];
-          connectStatus.innerHTML = `<span class="text-cyan-400">✅ Connected • ${userAddress.slice(0,6)}...${userAddress.slice(-4)}</span>`;
-        } else {
-          disconnectWallet();
-        }
-      });
-    }
-
-    // Rest of the code (file upload, display, deposit, etc.) remains the same as v36
+    // Rest of the app (file upload, validators, deposit, etc.)
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
