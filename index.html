@@ -55,7 +55,7 @@
   </footer>
 
   <script>
-    console.log("=== PulseChain Staking — v30 FINAL (Smart Gas Estimation) ===");
+    console.log("=== PulseChain Staking — v31 FINAL (MetaMask Bug Fix) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const fileInput = document.getElementById('fileInput');
@@ -195,7 +195,7 @@
       window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
     };
 
-    // v30 — Smart gas estimation (exactly like official launchpad behaviour)
+    // v31 — Fixed MetaMask AdvancedEIP1559Modal crash
     window.makeDeposit = async function(index) {
       if (!userAddress) return alert("Please connect MetaMask first");
       const deposit = depositsData[index];
@@ -216,7 +216,7 @@
       if (!confirm(`Deposit 32,000,000 PLS for Validator #${index+1}?`)) return;
 
       const statusDiv = document.getElementById(`status-${index}`);
-      statusDiv.innerHTML = `<span class="text-yellow-400">Estimating gas...</span>`;
+      statusDiv.innerHTML = `<span class="text-yellow-400">Sending transaction...</span>`;
 
       try {
         const signer = provider.getSigner();
@@ -226,16 +226,9 @@
           signer
         );
 
-        const estimatedGas = await contract.estimateGas.deposit(
-          pubkey, withdrawalCredentials, signature, depositDataRoot,
-          { value: ethers.utils.parseEther("32000000") }
-        );
-
-        const gasLimit = Math.floor(estimatedGas.toNumber() * 1.5); // 50% safe buffer
-
         const tx = await contract.deposit(pubkey, withdrawalCredentials, signature, depositDataRoot, {
           value: ethers.utils.parseEther("32000000"),
-          gasLimit: gasLimit
+          gasLimit: 250000   // Safe, low, matches official behaviour
         });
 
         statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
