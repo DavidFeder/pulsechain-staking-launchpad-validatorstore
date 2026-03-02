@@ -33,9 +33,9 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
    ./start.sh
 
 #### macOS
-Download PulseChain-Validator-Staking-Launchpad-macOS.zip
-Extract the zip
-Double-click Start.command
+1. Download PulseChain-Validator-Staking-Launchpad-macOS.zip
+2. Extract the zip
+3. Double-click Start.command
 
 
 #### Requirements
