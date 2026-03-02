@@ -31,21 +31,19 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 3. Open a terminal in the folder and run:
    chmod +x start.sh
    ./start.sh
-   macOS
 
+#### macOS
 Download PulseChain-Validator-Staking-Launchpad-macOS.zip
 Extract the zip
 Double-click Start.command
 
 
-Requirements
-
+#### Requirements
 A modern web browser (Chrome, Firefox, Edge, Safari)
 Internet Money Wallet, MetaMask, or any EVM-compatible wallet
 Python 3 (most computers already have it — the launcher will guide you if needed)
 
-Security
-
+#### Security
 Everything runs locally on your computer
 Your deposit file is never sent to any server
 You always sign transactions in your own wallet
