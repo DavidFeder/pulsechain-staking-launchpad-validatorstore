@@ -10,22 +10,8 @@
 </head>
 <body class="bg-black text-white min-h-screen">
 
-  <!-- 
-    ================================================
-    PULSECHAIN VALIDATOR STAKING LAUNCHPAD — v44
-    ================================================
-    
-    Changes in v44:
-    - Set default maxPriorityFeePerGas = 1,000,000 beats (your request)
-    - Set maxFeePerGas = 5,000,000 beats (5× buffer so tx never gets stuck)
-    - This is EIP-1559 compliant (PulseChain uses EIP-1559)
-    - Kept static gasLimit 250,000 (stable and safe)
-    - All comments kept for clarity
-  -->
-
   <main class="max-w-4xl mx-auto p-8">
 
-    <!-- Header -->
     <div class="flex justify-between items-center mb-12">
       <a href="https://pulsechain.com" target="_blank" class="flex items-center gap-4">
         <img src="LogoTransparent.png" alt="PulseChain" class="h-14 w-auto">
@@ -36,7 +22,6 @@
       </div>
     </div>
 
-    <!-- Connect -->
     <div class="bg-zinc-950 border border-cyan-900 rounded-3xl p-8 mb-8">
       <button id="connectBtn" type="button" class="w-full bg-gradient-to-r from-purple-600 via-cyan-500 to-cyan-400 hover:from-purple-700 hover:via-cyan-600 hover:to-cyan-500 py-5 rounded-2xl text-2xl font-bold transition">
         Connect Wallet
@@ -47,14 +32,12 @@
       <div id="balance" class="mt-4 text-center text-cyan-400 font-medium text-lg"></div>
     </div>
 
-    <!-- Upload -->
     <div class="bg-zinc-950 border border-cyan-900 rounded-3xl p-8 mb-8">
       <label class="block text-sm font-medium mb-3 text-cyan-300">Upload your deposit_data-*.json file</label>
       <input type="file" id="fileInput" accept=".json"
              class="block w-full text-sm text-gray-400 file:mr-4 file:py-4 file:px-8 file:rounded-2xl file:border-0 file:text-base file:font-semibold file:bg-gradient-to-r file:from-purple-600 file:via-cyan-500 file:to-cyan-400 file:text-white hover:file:brightness-110 cursor-pointer">
     </div>
 
-    <!-- Results -->
     <div id="results" class="hidden">
       <div class="flex items-center justify-between mb-6">
         <h2 class="text-3xl font-bold text-white">Your Validators</h2>
@@ -71,10 +54,7 @@
   </footer>
 
   <script>
-    // ================================================
-    // v44 — YOUR PREFERRED FEE SETTINGS (1 million beats)
-    // ================================================
-    console.log("=== PulseChain Staking — v44 (1M beats priority fee) ===");
+    console.log("=== PulseChain Staking — v44 FINAL (1M beats priority fee) ===");
 
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
@@ -225,9 +205,6 @@
       window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
     };
 
-    // ================================================
-    // MAKE DEPOSIT — YOUR PREFERRED FEES (1 million beats)
-    // ================================================
     window.makeDeposit = async function(index) {
       if (!userAddress) return alert("Please connect a wallet first");
       const deposit = depositsData[index];
@@ -261,8 +238,8 @@
         const tx = await contract.deposit(pubkey, withdrawalCredentials, signature, depositDataRoot, {
           value: ethers.utils.parseEther("32000000"),
           gasLimit: 250000,
-          maxFeePerGas: ethers.utils.parseUnits("0.005", "gwei"),     // 5 million beats max total fee
-          maxPriorityFeePerGas: ethers.utils.parseUnits("0.001", "gwei") // 1 million beats priority fee (your request)
+          maxFeePerGas: ethers.utils.parseUnits("0.005", "gwei"),        // 5 million beats max
+          maxPriorityFeePerGas: ethers.utils.parseUnits("0.001", "gwei") // 1 million beats (your preference)
         });
 
         statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
