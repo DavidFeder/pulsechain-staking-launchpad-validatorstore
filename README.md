@@ -39,21 +39,21 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 
 
 #### Requirements
-A modern web browser (Chrome, Firefox, Edge, Safari)
-Internet Money Wallet, MetaMask, or any EVM-compatible wallet
-Python 3 (most computers already have it — the launcher will guide you if needed)
+- A modern web browser (Chrome, Firefox, Edge, Safari)
+- Internet Money Wallet, MetaMask, or any EVM-compatible wallet
+- Python 3 (most computers already have it — the launcher will guide you if needed)
 
 #### Security
-Everything runs locally on your computer
-Your deposit file is never sent to any server
-You always sign transactions in your own wallet
+- Everything runs locally on your computer
+- Your deposit file is never sent to any server
+- You always sign transactions in your own wallet
 
-Always verify the deposit contract address in your wallet before confirming:
+- Always verify the deposit contract address in your wallet before confirming:
 0x3693693693693693693693693693693693693693
 
-License
-This project is licensed under the MIT License — you are free to use, modify, and even sell modified versions.
-See LICENSE for details.
+#### License
+- This project is licensed under the MIT License — you are free to use, modify, and even sell modified versions.
+- See LICENSE for details.
 
 Questions or need hardware?
 Visit ValidatorStore.com
