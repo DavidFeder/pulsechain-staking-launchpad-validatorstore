@@ -33,9 +33,9 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
    ./start.sh
 
 #### macOS
-1. Download PulseChain-Validator-Staking-Launchpad-macOS.zip
+1. Download `PulseChain-Validator-Staking-Launchpad-macOS.zip`
 2. Extract the zip
-3. Double-click Start.command
+3. Double-click `Start.command`
 
 
 #### Requirements
@@ -49,7 +49,7 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 - You always sign transactions in your own wallet
 
 - Always verify the deposit contract address in your wallet before confirming:
-0x3693693693693693693693693693693693693693
+`0x3693693693693693693693693693693693693693`
 
 #### License
 - This project is licensed under the MIT License — you are free to use, modify, and even sell modified versions.
