@@ -11,7 +11,7 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 - Upload your `deposit_data-*.json` file
 - Shows which validators are ready to stake
 - Real-time status check against the beacon chain
-- One-click deposits using your own wallet
+- One-click per stake deposits using your own wallet
 - Works with Internet Money Wallet & MetaMask
 - Completely local — your deposit file is never uploaded to the cloud
 
@@ -28,9 +28,9 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 #### Linux
 1. Download `PulseChain-Validator-Staking-Launchpad-Linux.tar.gz`
 2. Extract the archive
-3. Open a terminal in the folder and run:
-   chmod +x start.sh
-   ./start.sh
+3. Open a terminal in the unzipped folder and run:
+   `chmod +x start.sh`
+   `./start.sh`
 
 #### macOS
 1. Download `PulseChain-Validator-Staking-Launchpad-macOS.zip`
