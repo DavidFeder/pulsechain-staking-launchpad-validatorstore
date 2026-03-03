@@ -12,8 +12,8 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 - Shows which validators are ready to stake
 - Real-time status check against the beacon chain
 - One-click deposits using your own wallet
-- Works with Internet Money Wallet, MetaMask, and any other EVM wallet
-- Completely local — nothing is uploaded or stored
+- Works with Internet Money Wallet & MetaMask
+- Completely local — your deposit file is never uploaded to the cloud
 
 ---
 
@@ -39,8 +39,8 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 
 
 #### Requirements
-- A modern web browser (Chrome, Firefox, Edge, Safari)
-- Internet Money Wallet, MetaMask, or any EVM-compatible wallet
+- A modern web browser and your preferred extension based wallet
+- Internet Money Wallet & MetaMask tested and supported
 - Python 3 (most computers already have it — the launcher will guide you if needed)
 
 #### Security
