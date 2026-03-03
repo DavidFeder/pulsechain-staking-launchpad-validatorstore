@@ -1,6 +1,6 @@
 # PulseChain Validator Staking Launchpad
 
-**Simple, safe, and beautiful tool for ValidatorStore.com customers to stake their validators on PulseChain.**
+**Simple and beautiful tool for ValidatorStore.com customers to stake their validators on PulseChain.**
 
 Built with ❤️ for people who bought validator hardware from ValidatorStore.com.
 
