@@ -12,7 +12,7 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 - Shows which validators are ready to stake
 - Real-time status check against the beacon chain
 - One-click per stake deposits using your own wallet
-- Works with Internet Money Wallet & MetaMask
+- Designed for use with Internet Money Wallet & MetaMask
 - Completely local — your deposit file is never uploaded to the cloud
 
 ---
