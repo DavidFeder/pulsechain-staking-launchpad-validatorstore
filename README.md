@@ -46,7 +46,7 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 ## Run with Docker (Advanced Users)
 One-command local run (no build needed):
 
-docker run -d -p 8080:80 ghcr.io/davidfeder/pulsechain-staking-launchpad-validatorstore:latest
+_docker run -d -p 8080:80 ghcr.io/davidfeder/pulsechain-staking-launchpad-validatorstore:latest_
 
 #### Security
 - Everything runs locally on your computer
