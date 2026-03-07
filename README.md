@@ -43,6 +43,11 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 - Internet Money Wallet & MetaMask tested and supported
 - Python 3 (most computers already have it — the launcher will guide you if needed)
 
+## Run with Docker (Advanced Users)
+One-command local run (no build needed):
+
+docker run -d -p 8080:80 ghcr.io/davidfeder/pulsechain-staking-launchpad-validatorstore:latest
+
 #### Security
 - Everything runs locally on your computer
 - Your deposit file is never sent to any server
