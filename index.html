@@ -1,3 +1,4 @@
+<DOCUMENT filename="index.html">
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,6 +13,7 @@
 
   <main class="max-w-4xl mx-auto p-8">
 
+    <!-- HEADER: Logo + title + connection status -->
     <div class="flex justify-between items-center mb-12">
       <a href="https://pulsechain.com" target="_blank" class="flex items-center gap-4">
         <img src="LogoTransparent.png" alt="PulseChain" class="h-14 w-auto">
@@ -22,6 +24,7 @@
       </div>
     </div>
 
+    <!-- CONNECT WALLET SECTION -->
     <div class="bg-zinc-950 border border-cyan-900 rounded-3xl p-8 mb-8">
       <button id="connectBtn" type="button" class="w-full bg-gradient-to-r from-purple-600 via-cyan-500 to-cyan-400 hover:from-purple-700 hover:via-cyan-600 hover:to-cyan-500 py-5 rounded-2xl text-2xl font-bold transition">
         Connect Wallet
@@ -32,12 +35,19 @@
       <div id="balance" class="mt-4 text-center text-cyan-400 font-medium text-lg"></div>
     </div>
 
+    <!-- UPLOAD DEPOSIT FILE SECTION -->
     <div class="bg-zinc-950 border border-cyan-900 rounded-3xl p-8 mb-8">
       <label class="block text-sm font-medium mb-3 text-cyan-300">Upload your deposit_data-*.json file</label>
       <input type="file" id="fileInput" accept=".json"
              class="block w-full text-sm text-gray-400 file:mr-4 file:py-4 file:px-8 file:rounded-2xl file:border-0 file:text-base file:font-semibold file:bg-gradient-to-r file:from-purple-600 file:via-cyan-500 file:to-cyan-400 file:text-white hover:file:brightness-110 cursor-pointer">
     </div>
 
+    <!-- BEACON CHAIN NOTE (approved message) -->
+    <div class="text-xs text-cyan-400 font-medium text-center mt-8 mb-8">
+      It takes approximately 12 hours for stakes to show up as active on the Beacon chain. Please check back the next day to confirm the status of your stakes.
+    </div>
+
+    <!-- RESULTS SECTION (shown after file upload) -->
     <div id="results" class="hidden">
       <div class="flex items-center justify-between mb-6">
         <h2 class="text-3xl font-bold text-white">Your Validators</h2>
@@ -54,8 +64,11 @@
   </footer>
 
   <script>
+    // === DEBUG & STARTUP ===
     console.log("=== PulseChain Staking — v44 FINAL (1M beats priority fee) ===");
 
+    // === DOM ELEMENT REFERENCES ===
+    // These grab the HTML elements we need to update
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const fileInput = document.getElementById('fileInput');
@@ -65,10 +78,14 @@
     const balanceDiv = document.getElementById('balance');
     const connectStatus = document.getElementById('connectStatus');
 
+    // === STATE VARIABLES ===
+    // Keeps track of the connected wallet and deposit data
     let userAddress = null;
     let depositsData = [];
     let provider = null;
 
+    // === PULSECHAIN NETWORK SETUP ===
+    // Switches or adds the PulseChain network in the user's wallet
     async function ensurePulseChainNetwork() {
       const targetChainId = '0x171';
       try {
@@ -95,6 +112,8 @@
       }
     }
 
+    // === WALLET CONNECTION LOGIC ===
+    // Connects the wallet and shows balance
     connectBtn.addEventListener('click', async () => {
       if (!window.ethereum) return alert("Wallet not found.");
       try {
@@ -115,6 +134,8 @@
       }
     });
 
+    // === DISCONNECT FUNCTION ===
+    // Clears everything when user disconnects
     window.disconnectWallet = function() {
       userAddress = null;
       provider = null;
@@ -127,6 +148,8 @@
       validatorListDiv.innerHTML = '';
     };
 
+    // === FILE UPLOAD HANDLER ===
+    // Reads the deposit_data JSON and displays validators
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -141,6 +164,8 @@
       reader.readAsText(file);
     });
 
+    // === VALIDATOR DISPLAY ===
+    // Creates the list of validators with status and buttons
     function displayValidators(deposits) {
       validatorListDiv.innerHTML = '';
       resultsDiv.classList.remove('hidden');
@@ -167,6 +192,8 @@
       });
     }
 
+    // === PUBKEY STATUS CHECK ===
+    // Queries the Beacon API to see if a validator is already deposited
     async function checkPubkeyUsed(index, rawPubkey, callback) {
       const statusEl = document.getElementById(`status-${index}`);
       const btn = document.getElementById(`btn-${index}`);
@@ -191,20 +218,26 @@
       callback();
     }
 
+    // === HELPER: CLEAN HEX ===
+    // Makes sure every BLS field starts with 0x
     function cleanHex(str) {
       if (!str) return "0x";
       str = str.trim();
       return str.startsWith("0x") ? str : "0x" + str;
     }
 
+    // === SUMMARY UPDATER ===
     function updateSummary(readyCount, total) {
       summaryDiv.textContent = `${readyCount} of ${total} ready for deposit`;
     }
 
+    // === OPEN VALIDATOR CHECK ===
     window.checkValidator = function(pubkey) {
       window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
     };
 
+    // === DEPOSIT FUNCTION ===
+    // Sends the actual 32M PLS transaction to the deposit contract
     window.makeDeposit = async function(index) {
       if (!userAddress) return alert("Please connect a wallet first");
       const deposit = depositsData[index];
@@ -238,8 +271,8 @@
         const tx = await contract.deposit(pubkey, withdrawalCredentials, signature, depositDataRoot, {
           value: ethers.utils.parseEther("32000000"),
           gasLimit: 250000,
-          maxFeePerGas: ethers.utils.parseUnits("0.005", "gwei"),        // 5 million beats max
-          maxPriorityFeePerGas: ethers.utils.parseUnits("0.001", "gwei") // 1 million beats (your preference)
+          maxFeePerGas: ethers.utils.parseUnits("0.005", "gwei"),
+          maxPriorityFeePerGas: ethers.utils.parseUnits("0.001", "gwei")
         });
 
         statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
@@ -257,3 +290,4 @@
   </script>
 </body>
 </html>
+</DOCUMENT>
