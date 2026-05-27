@@ -59,12 +59,16 @@
 
   <footer class="text-center mt-20 text-xs text-gray-500 pb-8">
     Built for <a href="https://www.validatorstore.com/" target="_blank" class="text-cyan-400 hover:text-cyan-300">ValidatorStore.com</a> • PulseChain Validator Hardware<br>
-    <span class="text-[10px]">Report <a href="https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/issues" target="_blank" class="text-cyan-400 hover:text-cyan-300">Bugs</span>
+    <span class="text-[10px]">Report <a href="https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/issues" target="_blank" class="text-cyan-400 hover:text-cyan-300">Bugs</a></span><br>
+    <span id="app-version" class="text-[10px] text-cyan-400"></span>
   </footer>
 
   <script>
+    // === APP VERSION ===
+    const APP_VERSION = "1.2.0";
+
     // === DEBUG & STARTUP ===
-    console.log("=== PulseChain Staking — v45 (simple RPC fallback) ===");
+    console.log(`=== PulseChain Staking — v${APP_VERSION} ===`);
 
     // === DOM ELEMENT REFERENCES ===
     // These grab the HTML elements we need to update
@@ -76,6 +80,12 @@
     const summaryDiv = document.getElementById('summary');
     const balanceDiv = document.getElementById('balance');
     const connectStatus = document.getElementById('connectStatus');
+
+    // Display version in footer
+    const versionEl = document.getElementById('app-version');
+    if (versionEl) {
+      versionEl.textContent = `v${APP_VERSION}`;
+    }
 
     // === STATE VARIABLES ===
     // Keeps track of the connected wallet and deposit data
