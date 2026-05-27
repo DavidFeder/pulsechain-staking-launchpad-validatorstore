@@ -55,9 +55,18 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 
 ---
 
-### Docker Support
+### Docker
 
-Docker support is coming soon.
+You can run the app using Docker:
+
+```bash
+docker run -d -p 8080:80 ghcr.io/davidfeder/pulsechain-staking-launchpad-validatorstore:latest
+```
+
+Then open **http://localhost:8080** in your browser.
+
+- The container runs nginx and serves the app on port 80 internally. Change the host port (left side of the mapping) if 8080 is already in use on your machine.
+- To run a specific version, replace `latest` with the version tag (for example `v1.1.1`).
 
 ---
 
