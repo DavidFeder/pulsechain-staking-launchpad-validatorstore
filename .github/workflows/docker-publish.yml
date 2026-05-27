@@ -32,7 +32,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=ref,event=branch
+            # Clean tagging strategy:
+            # - Releases get proper version tags + latest
+            # - Manual runs mainly get a SHA tag (avoids polluting with :main)
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
