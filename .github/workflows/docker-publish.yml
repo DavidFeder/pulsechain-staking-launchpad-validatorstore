@@ -3,7 +3,17 @@ name: Build and Push Docker Image
 on:
   release:
     types: [published]
-  workflow_dispatch:   # Allows manual triggering from the Actions tab
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to tag the image with (e.g. v1.2.0)'
+        required: true
+        type: string
+      update_latest:
+        description: 'Also update the "latest" tag?'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-and-push:
@@ -32,14 +42,19 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            # Tagging strategy:
-            # - Real releases get clean semver tags + latest
-            # - Manual runs get SHA (clean, no :main pollution)
+            # Always include the SHA for traceability
             type=sha
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+
+            # Use the provided version on manual runs, otherwise fall back to the release tag
+            type=raw,value=${{ github.event.inputs.version || github.event.release.tag_name }}
+
+            # Semver tags only on real releases (when no manual version is provided)
+            type=semver,pattern={{version}},enable=${{ github.event.inputs.version == '' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event.inputs.version == '' }}
+            type=semver,pattern={{major}},enable=${{ github.event.inputs.version == '' }}
+
+            # latest is updated on releases by default, or when manually requested
+            type=raw,value=latest,enable=${{ github.event_name == 'release' || github.event.inputs.update_latest == true }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
