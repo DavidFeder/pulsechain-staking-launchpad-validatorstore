@@ -7,21 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-28
+
 ### Added
+- `CHANGELOG.md` following the Keep a Changelog format.
 - Visible application version in the UI footer.
-- RPC status indicator in the header (shows which RPC endpoint is currently being used).
+- RPC status indicator in the header (shows which RPC endpoint is currently being used, e.g. "Connected via g4mm4").
+- Automatic update of the RPC indicator when the app falls back to a different endpoint.
 
 ### Changed
-- Improved internal RPC fallback handling with user-visible status.
+- Restructured header layout: RPC status indicator moved below the logo on the top left for better visual hierarchy.
+- Improved internal RPC fallback handling with user-visible feedback.
+- Docker workflow improvements (updated actions to newer versions, refined tagging strategy so `latest` is only updated on real releases).
 
-## [1.2.0] - 2026-05-27
-
-### Added
-- Visible version number in the footer (`v1.2.0`).
-- Docker support is now fully functional and documented (image published via GitHub Actions).
-
-### Changed
-- Docker workflow improvements (cleaner tagging, updated actions).
+### Fixed
+- Docker image is now publicly accessible and working correctly.
 
 ## [1.1.1] - 2026-03-??
 
