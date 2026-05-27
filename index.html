@@ -1,4 +1,3 @@
-<DOCUMENT filename="index.html">
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65,7 +64,7 @@
 
   <script>
     // === DEBUG & STARTUP ===
-    console.log("=== PulseChain Staking — v44 FINAL (1M beats priority fee) ===");
+    console.log("=== PulseChain Staking — v45 (simple RPC fallback) ===");
 
     // === DOM ELEMENT REFERENCES ===
     // These grab the HTML elements we need to update
@@ -84,8 +83,33 @@
     let depositsData = [];
     let provider = null;
 
+    // === PULSECHAIN RPC ENDPOINTS (simple fallback list for redundancy) ===
+    // If one RPC is slow or down, the app will automatically try the next.
+    const PULSECHAIN_RPCS = [
+      "https://rpc-pulsechain.g4mm4.io",           // original
+      "https://pulsechain-rpc.publicnode.com",
+      "https://rpc.pulsechain.com",
+      "https://rpc.gigatheminter.com"
+    ];
+
+    // Simple fallback helper for beacon chain queries (validator status checks)
+    async function fetchBeacon(path) {
+      for (const rpc of PULSECHAIN_RPCS) {
+        try {
+          const res = await fetch(`${rpc}/beacon-api${path}`, {
+            signal: AbortSignal.timeout(7000)
+          });
+          if (res.ok) return res;
+        } catch (e) {
+          // Try the next RPC in the list
+        }
+      }
+      throw new Error("All RPC endpoints failed");
+    }
+
     // === PULSECHAIN NETWORK SETUP ===
     // Switches or adds the PulseChain network in the user's wallet
+    // We now provide multiple RPCs so wallets have built-in redundancy too.
     async function ensurePulseChainNetwork() {
       const targetChainId = '0x171';
       try {
@@ -100,7 +124,7 @@
                 chainId: targetChainId,
                 chainName: 'PulseChain',
                 nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
-                rpcUrls: ['https://rpc-pulsechain.g4mm4.io'],
+                rpcUrls: PULSECHAIN_RPCS,
                 blockExplorerUrls: ['https://otter-pulsechain.g4mm4.io/']
               }]
             });
@@ -193,14 +217,17 @@
     }
 
     // === PUBKEY STATUS CHECK ===
-    // Queries the Beacon API to see if a validator is already deposited
+    // Queries the Beacon API to see if a validator is already deposited.
+    // Now uses fetchBeacon() so it automatically tries other RPCs if one fails.
     async function checkPubkeyUsed(index, rawPubkey, callback) {
       const statusEl = document.getElementById(`status-${index}`);
       const btn = document.getElementById(`btn-${index}`);
       let pubkey = cleanHex(rawPubkey);
       try {
-        let response = await fetch(`https://rpc-pulsechain.g4mm4.io/beacon-api/eth/v1/beacon/states/head/validators/${pubkey}`);
-        if (response.status === 400) response = await fetch(`https://rpc-pulsechain.g4mm4.io/beacon-api/eth/v1/beacon/states/head/validators/${pubkey.slice(2)}`);
+        let response = await fetchBeacon(`/eth/v1/beacon/states/head/validators/${pubkey}`);
+        if (response.status === 400) {
+          response = await fetchBeacon(`/eth/v1/beacon/states/head/validators/${pubkey.slice(2)}`);
+        }
         if (response.ok) {
           const json = await response.json();
           if (json.data && json.data.validator) {
@@ -290,4 +317,3 @@
   </script>
 </body>
 </html>
-</DOCUMENT>
