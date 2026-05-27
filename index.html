@@ -19,6 +19,7 @@
       </a>
       <div class="text-right">
         <div class="text-xs text-cyan-400 font-medium">PulseChain Validator Staking Launchpad</div>
+        <div id="rpcStatus" class="text-[10px] text-gray-400 mt-0.5"></div>
         <div id="connectStatus" class="text-sm"></div>
       </div>
     </div>
@@ -63,11 +64,13 @@
   </footer>
 
   <script>
+    // === APP VERSION ===
+    const APP_VERSION = "1.2.0";
+
     // === DEBUG & STARTUP ===
-    console.log("=== PulseChain Staking — v45 (simple RPC fallback) ===");
+    console.log(`=== PulseChain Staking — v${APP_VERSION} ===`);
 
     // === DOM ELEMENT REFERENCES ===
-    // These grab the HTML elements we need to update
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const fileInput = document.getElementById('fileInput');
@@ -76,40 +79,61 @@
     const summaryDiv = document.getElementById('summary');
     const balanceDiv = document.getElementById('balance');
     const connectStatus = document.getElementById('connectStatus');
+    const rpcStatusEl = document.getElementById('rpcStatus');
 
     // === STATE VARIABLES ===
-    // Keeps track of the connected wallet and deposit data
     let userAddress = null;
     let depositsData = [];
     let provider = null;
+    let currentRpc = null;
 
-    // === PULSECHAIN RPC ENDPOINTS (simple fallback list for redundancy) ===
-    // If one RPC is slow or down, the app will automatically try the next.
+    // === RPC CONFIG ===
     const PULSECHAIN_RPCS = [
-      "https://rpc-pulsechain.g4mm4.io",           // original
+      "https://rpc-pulsechain.g4mm4.io",
       "https://pulsechain-rpc.publicnode.com",
       "https://rpc.pulsechain.com",
       "https://rpc.gigatheminter.com"
     ];
 
-    // Simple fallback helper for beacon chain queries (validator status checks)
+    const RPC_DISPLAY_NAMES = {
+      "https://rpc-pulsechain.g4mm4.io": "g4mm4",
+      "https://pulsechain-rpc.publicnode.com": "PublicNode",
+      "https://rpc.pulsechain.com": "pulsechain.com",
+      "https://rpc.gigatheminter.com": "GigaTheminter"
+    };
+
+    function updateRpcStatus(rpc) {
+      if (!rpcStatusEl) return;
+      if (!rpc) {
+        rpcStatusEl.textContent = "";
+        return;
+      }
+      const name = RPC_DISPLAY_NAMES[rpc] || rpc;
+      rpcStatusEl.textContent = `Connected via ${name}`;
+    }
+
+    // === PULSECHAIN RPC ENDPOINTS (with fallback) ===
     async function fetchBeacon(path) {
       for (const rpc of PULSECHAIN_RPCS) {
         try {
           const res = await fetch(`${rpc}/beacon-api${path}`, {
             signal: AbortSignal.timeout(7000)
           });
-          if (res.ok) return res;
+          if (res.ok) {
+            if (currentRpc !== rpc) {
+              currentRpc = rpc;
+              updateRpcStatus(currentRpc);
+            }
+            return res;
+          }
         } catch (e) {
-          // Try the next RPC in the list
+          // try next RPC
         }
       }
       throw new Error("All RPC endpoints failed");
     }
 
     // === PULSECHAIN NETWORK SETUP ===
-    // Switches or adds the PulseChain network in the user's wallet
-    // We now provide multiple RPCs so wallets have built-in redundancy too.
     async function ensurePulseChainNetwork() {
       const targetChainId = '0x171';
       try {
@@ -137,7 +161,6 @@
     }
 
     // === WALLET CONNECTION LOGIC ===
-    // Connects the wallet and shows balance
     connectBtn.addEventListener('click', async () => {
       if (!window.ethereum) return alert("Wallet not found.");
       try {
@@ -153,27 +176,30 @@
         connectBtn.textContent = "Connected ✓";
         connectBtn.disabled = true;
         disconnectBtn.classList.remove('hidden');
+
+        // Show initial RPC (will be updated on first successful beacon call)
+        updateRpcStatus(PULSECHAIN_RPCS[0]);
       } catch (err) {
         connectStatus.innerHTML = `<span class="text-red-500">Connection failed</span>`;
       }
     });
 
     // === DISCONNECT FUNCTION ===
-    // Clears everything when user disconnects
     window.disconnectWallet = function() {
       userAddress = null;
       provider = null;
+      currentRpc = null;
       connectBtn.textContent = "Connect Wallet";
       connectBtn.disabled = false;
       disconnectBtn.classList.add('hidden');
       balanceDiv.textContent = '';
       connectStatus.textContent = '';
+      if (rpcStatusEl) rpcStatusEl.textContent = '';
       resultsDiv.classList.add('hidden');
       validatorListDiv.innerHTML = '';
     };
 
     // === FILE UPLOAD HANDLER ===
-    // Reads the deposit_data JSON and displays validators
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -189,7 +215,6 @@
     });
 
     // === VALIDATOR DISPLAY ===
-    // Creates the list of validators with status and buttons
     function displayValidators(deposits) {
       validatorListDiv.innerHTML = '';
       resultsDiv.classList.remove('hidden');
@@ -217,8 +242,6 @@
     }
 
     // === PUBKEY STATUS CHECK ===
-    // Queries the Beacon API to see if a validator is already deposited.
-    // Now uses fetchBeacon() so it automatically tries other RPCs if one fails.
     async function checkPubkeyUsed(index, rawPubkey, callback) {
       const statusEl = document.getElementById(`status-${index}`);
       const btn = document.getElementById(`btn-${index}`);
@@ -246,7 +269,6 @@
     }
 
     // === HELPER: CLEAN HEX ===
-    // Makes sure every BLS field starts with 0x
     function cleanHex(str) {
       if (!str) return "0x";
       str = str.trim();
@@ -264,7 +286,6 @@
     };
 
     // === DEPOSIT FUNCTION ===
-    // Sends the actual 32M PLS transaction to the deposit contract
     window.makeDeposit = async function(index) {
       if (!userAddress) return alert("Please connect a wallet first");
       const deposit = depositsData[index];
