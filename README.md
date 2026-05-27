@@ -6,18 +6,25 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 
 ---
 
+### Latest Release: v1.1.1
+
+- Improved reliability with automatic fallback across multiple PulseChain RPC endpoints.
+- [Download the latest version →](https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/releases/latest)
+
+---
+
 ### Features
 - Clean and easy-to-use interface
 - Upload your `deposit_data-*.json` file
 - Shows which validators are ready to stake
 - Real-time status check against the beacon chain
-- One-click per stake deposits using your own wallet
-- Designed for use with Internet Money Wallet & MetaMask
-- Completely local — your deposit file is never uploaded to the cloud
+- One-click deposits using your own wallet
+- Designed for Internet Money Wallet & MetaMask
+- Completely local — your deposit file never leaves your computer
 
 ---
 
-### How to Use (Super Simple)
+### How to Use
 
 #### Windows
 1. Download `PulseChain-Validator-Staking-Launchpad-Windows.zip`
@@ -26,42 +33,55 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 4. Connect your wallet and upload your deposit file
 
 #### Linux
-1. Download `PulseChain-Validator-Staking-Launchpad-Linux.tar.gz`
-2. Extract the archive
-3. Open a terminal in the unzipped folder and run:
-   `chmod +x start.sh`
-   `./start.sh`
+1. Download `PulseChain-Validator-Staking-Launchpad-Linux.zip`
+2. Extract the zip file
+3. Open a terminal in the extracted folder and run:
+   ```bash
+   chmod +x START.sh
+   ./START.sh
+   ```
 
 #### macOS
 1. Download `PulseChain-Validator-Staking-Launchpad-macOS.zip`
-2. Extract the zip
+2. Extract the zip file
 3. Double-click `Start.command`
 
+---
 
-#### Requirements
-- A modern web browser and your preferred extension based wallet
-- Internet Money Wallet & MetaMask tested and supported
-- Python 3 (most computers already have it — the launcher will guide you if needed)
+### Requirements
+- A modern web browser with an extension wallet
+- Internet Money Wallet or MetaMask (tested and supported)
+- Python 3 (the launcher will guide you if it's missing)
 
-## Run with Docker (Advanced Users)
-One-command local run (no build needed):
+---
 
-_docker run -d -p 8080:80 ghcr.io/davidfeder/pulsechain-staking-launchpad-validatorstore:latest_
+### Docker Support
 
-#### Security
+Docker support is coming soon.
+
+---
+
+### Security
+
 - Everything runs locally on your computer
-- Your deposit file is never sent to any server
+- Your deposit file is never sent anywhere
 - You always sign transactions in your own wallet
 
-- Always verify the deposit contract address in your wallet before confirming:
-`0x3693693693693693693693693693693693693693`
+**Always double-check the deposit contract address** in your wallet before confirming:
 
-#### License
-- This project is licensed under the MIT License — you are free to use, modify, and even sell modified versions.
-- See LICENSE for details.
+```
+0x3693693693693693693693693693693693693693
+```
 
-Questions or need hardware?
-Visit ValidatorStore.com
+---
 
-Thank you for supporting ValidatorStore.com!
-Happy staking on PulseChain! 🚀
+### License
+
+MIT License — you are free to use, modify, and even sell modified versions.
+
+---
+
+**Questions or need hardware?**  
+Visit [ValidatorStore.com](https://www.validatorstore.com)
+
+Thank you for supporting ValidatorStore.com and PulseChain!
