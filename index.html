@@ -71,7 +71,7 @@
 
   <script>
     // === APP VERSION ===
-    const APP_VERSION = "1.2.1";
+    const APP_VERSION = "1.2.2";
 
     // === DEBUG & STARTUP ===
     console.log(`=== PulseChain Staking — v${APP_VERSION} ===`);
@@ -298,7 +298,7 @@
     };
 
     // === ROBUST TX CONFIRMATION (multi-RPC fallback) ===
-    async function waitForTransactionConfirmation(txHash, maxWaitMs = 180000) {
+    async function waitForTransactionConfirmation(txHash, maxWaitMs = 300000) {
       const startTime = Date.now();
       const pollInterval = 3000; // poll every 3s
 
@@ -347,6 +347,9 @@
 
       if (!confirm(`Deposit 32,000,000 PLS for Validator #${index+1}?`)) return;
 
+      // Disable button immediately to prevent double-clicks during async processing
+      btn.disabled = true;
+
       const statusDiv = document.getElementById(`status-${index}`);
       statusDiv.innerHTML = `<span class="text-yellow-400">Sending transaction...</span>`;
 
@@ -385,6 +388,7 @@
         } else {
           statusDiv.innerHTML = `<span class="text-red-500">Transaction failed or not yet confirmed</span>`;
           alert("Transaction may have failed, been replaced, or is still pending. Please check the explorer link above.");
+          btn.disabled = false; // allow retry
         }
       } catch (err) {
         console.error(err);
@@ -401,6 +405,7 @@
 
         statusDiv.innerHTML = `<span class="text-red-500">${msg}</span>`;
         alert(`${msg}. Check your wallet and try again.`);
+        btn.disabled = false; // allow retry
       }
     };
   </script>
