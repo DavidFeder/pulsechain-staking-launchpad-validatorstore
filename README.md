@@ -6,13 +6,13 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 
 ---
 
-### Latest Release: v1.2.0
+### Latest Release: v1.2.2
 
-- New RPC status indicator in the header (shows which RPC endpoint is currently being used and updates automatically when falling back).
-- Visible version number (`v1.2.0`) now displayed in the footer.
-- Docker support is now fully working, documented, and automatically published on releases via GitHub Actions.
-- Added `CHANGELOG.md` for better tracking of changes.
-- Header layout improvements for better visual hierarchy.
+- Major reliability improvements for transaction confirmations (fixes false "Transaction failed" reports even when deposits succeeded).
+- Multi-RPC fallback polling for transaction receipts.
+- Deposit button now properly disabled during processing to prevent accidental double-clicks.
+- Increased confirmation timeout to 5 minutes.
+- Better error messages and gas settings.
 - [Download the latest version →](https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/releases/latest)
 
 ---
@@ -70,7 +70,7 @@ docker run -d -p 8080:80 ghcr.io/davidfeder/pulsechain-staking-launchpad-validat
 Then open **http://localhost:8080** in your browser.
 
 - The container runs nginx and serves the app on port 80 internally. Change the host port (left side of the mapping) if 8080 is already in use on your machine.
-- To run a specific version, replace `latest` with the version tag (for example `v1.2.0`).
+- To run a specific version, replace `latest` with the version tag (for example `v1.2.2`).
 
 ---
 
