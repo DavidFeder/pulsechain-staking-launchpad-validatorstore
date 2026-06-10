@@ -71,7 +71,7 @@
 
   <script>
     // === APP VERSION ===
-    const APP_VERSION = "1.2.0";
+    const APP_VERSION = "1.2.1";
 
     // === DEBUG & STARTUP ===
     console.log(`=== PulseChain Staking — v${APP_VERSION} ===`);
@@ -297,6 +297,36 @@
       window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
     };
 
+    // === ROBUST TX CONFIRMATION (multi-RPC fallback) ===
+    async function waitForTransactionConfirmation(txHash, maxWaitMs = 180000) {
+      const startTime = Date.now();
+      const pollInterval = 3000; // poll every 3s
+
+      while (Date.now() - startTime < maxWaitMs) {
+        for (const rpcUrl of PULSECHAIN_RPCS) {
+          try {
+            const tempProvider = new ethers.providers.JsonRpcProvider(rpcUrl);
+            const receipt = await tempProvider.getTransactionReceipt(txHash);
+            if (receipt && receipt.blockNumber != null) {
+              if (receipt.status === 1) {
+                console.log(`[Confirmation] Success via ${rpcUrl}`);
+                return { success: true, receipt };
+              } else {
+                console.log(`[Confirmation] Reverted via ${rpcUrl}`);
+                return { success: false, receipt };
+              }
+            }
+          } catch (e) {
+            // try next RPC
+            continue;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+      console.warn(`[Confirmation] Timeout waiting for ${txHash}`);
+      return { success: false, receipt: null };
+    }
+
     // === DEPOSIT FUNCTION ===
     window.makeDeposit = async function(index) {
       if (!userAddress) return alert("Please connect a wallet first");
@@ -331,20 +361,46 @@
         const tx = await contract.deposit(pubkey, withdrawalCredentials, signature, depositDataRoot, {
           value: ethers.utils.parseEther("32000000"),
           gasLimit: 250000,
-          maxFeePerGas: ethers.utils.parseUnits("0.005", "gwei"),
-          maxPriorityFeePerGas: ethers.utils.parseUnits("0.001", "gwei")
+          maxFeePerGas: ethers.utils.parseUnits("0.02", "gwei"),
+          maxPriorityFeePerGas: ethers.utils.parseUnits("0.005", "gwei")
         });
 
         statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
-        await tx.wait();
-        statusDiv.innerHTML = `<span class="text-cyan-400">✅ Deposit confirmed!</span>`;
-        btn.textContent = "Deposited ✓";
-        btn.classList.add('bg-zinc-800', 'cursor-not-allowed');
-        btn.disabled = true;
+
+        // Primary wait (fast if wallet RPC is healthy) + multi-RPC fallback
+        let confirmationResult;
+        try {
+          await tx.wait(1);
+          confirmationResult = { success: true };
+        } catch (waitErr) {
+          console.warn("Primary tx.wait() failed — falling back to multi-RPC polling...", waitErr);
+          confirmationResult = await waitForTransactionConfirmation(tx.hash);
+        }
+
+        if (confirmationResult.success) {
+          statusDiv.innerHTML = `<span class="text-cyan-400">✅ Deposit confirmed!</span>`;
+          btn.textContent = "Deposited ✓";
+          btn.classList.add('bg-zinc-800', 'cursor-not-allowed');
+          btn.disabled = true;
+        } else {
+          statusDiv.innerHTML = `<span class="text-red-500">Transaction failed or not yet confirmed</span>`;
+          alert("Transaction may have failed, been replaced, or is still pending. Please check the explorer link above.");
+        }
       } catch (err) {
         console.error(err);
-        statusDiv.innerHTML = `<span class="text-red-500">Transaction failed</span>`;
-        alert("Transaction failed. Check your wallet and try again.");
+        let msg = "Transaction failed";
+        const lowerMsg = (err.message || "").toLowerCase();
+
+        if (err.code === 4001 || lowerMsg.includes("user rejected") || lowerMsg.includes("denied")) {
+          msg = "Transaction rejected by user";
+        } else if (lowerMsg.includes("insufficient funds")) {
+          msg = "Insufficient funds for gas";
+        } else if (lowerMsg.includes("gas")) {
+          msg = "Gas estimation / price error";
+        }
+
+        statusDiv.innerHTML = `<span class="text-red-500">${msg}</span>`;
+        alert(`${msg}. Check your wallet and try again.`);
       }
     };
   </script>
