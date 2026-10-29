@@ -6,13 +6,12 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 
 ---
 
-### Latest Release: v1.2.2
+### Latest Release: v1.2.3
 
-- Major reliability improvements for transaction confirmations (fixes false "Transaction failed" reports even when deposits succeeded).
-- Multi-RPC fallback polling for transaction receipts.
-- Deposit button now properly disabled during processing to prevent accidental double-clicks.
-- Increased confirmation timeout to 5 minutes.
-- Better error messages and gas settings.
+- Stake counts stay correct when a beacon lookup fails or is rate-limited. A failed check is no longer treated as ready to deposit.
+- Validator status is checked in batches against a healthy beacon, then against recent deposit history, before a deposit button is enabled.
+- The summary shows ready, already deposited, and not checked. Unverified stakes stay disabled and can be retried.
+- Uploading a file again cancels the previous check, so a late response cannot change the count.
 - [Download the latest version →](https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/releases/latest)
 
 ---
@@ -20,8 +19,8 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 ### Features
 - Clean and easy-to-use interface
 - Upload your `deposit_data-*.json` file
-- Shows which validators are ready to stake
-- Real-time status check against the beacon chain
+- Shows which validators are ready, already deposited, or could not be checked
+- Status check against a healthy beacon, with recent deposit history included before a stake can be sent
 - One-click deposits using your own wallet
 - Designed for Internet Money Wallet & MetaMask
 - Completely local — your deposit file never leaves your computer
@@ -31,13 +30,13 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
 ### How to Use
 
 #### Windows
-1. Download `PulseChain-Validator-Staking-Launchpad-Windows.zip`
+1. Download `pulsechain-staking-launchpad-validatorstore-Windows.zip`
 2. Extract the zip file
 3. Double-click `START.bat`
 4. Connect your wallet and upload your deposit file
 
 #### Linux
-1. Download `PulseChain-Validator-Staking-Launchpad-Linux.zip`
+1. Download `pulsechain-staking-launchpad-validatorstore-Linux.zip`
 2. Extract the zip file
 3. Open a terminal in the extracted folder and run:
    ```bash
@@ -46,7 +45,7 @@ Built with ❤️ for people who bought validator hardware from ValidatorStore.c
    ```
 
 #### macOS
-1. Download `PulseChain-Validator-Staking-Launchpad-macOS.zip`
+1. Download `pulsechain-staking-launchpad-validatorstore-macOS.zip`
 2. Extract the zip file
 3. Double-click `Start.command`
 
@@ -70,7 +69,7 @@ docker run -d -p 8080:80 ghcr.io/davidfeder/pulsechain-staking-launchpad-validat
 Then open **http://localhost:8080** in your browser.
 
 - The container runs nginx and serves the app on port 80 internally. Change the host port (left side of the mapping) if 8080 is already in use on your machine.
-- To run a specific version, replace `latest` with the version tag (for example `v1.2.2`).
+- To run a specific version, replace `latest` with the version tag (for example `v1.2.3`).
 
 ---
 

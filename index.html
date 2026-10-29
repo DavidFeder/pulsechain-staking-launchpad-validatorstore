@@ -50,13 +50,17 @@
     <!-- BEACON CHAIN NOTE (approved message) -->
     <div class="text-xs text-cyan-400 font-medium text-center mt-8 mb-8">
       It takes approximately 12 hours for stakes to show up as active on the Beacon chain. Please check back the next day to confirm the status of your stakes.
+      Stakes that cannot be confirmed stay disabled until the check succeeds.
     </div>
 
     <!-- RESULTS SECTION (shown after file upload) -->
     <div id="results" class="hidden">
-      <div class="flex items-center justify-between mb-6">
+      <div class="flex items-start justify-between gap-4 mb-6">
         <h2 class="text-3xl font-bold text-white">Your Validators</h2>
-        <div id="summary" class="text-cyan-400 text-2xl font-bold"></div>
+        <div class="text-right max-w-[11rem] sm:max-w-none">
+          <div id="summary" class="text-cyan-400 text-lg font-bold leading-snug"></div>
+          <button id="retryBtn" type="button" class="hidden mt-2 text-sm text-amber-300 hover:text-amber-200 underline">Retry unverified</button>
+        </div>
       </div>
       <div id="validatorList" class="space-y-4"></div>
     </div>
@@ -71,7 +75,7 @@
 
   <script>
     // === APP VERSION ===
-    const APP_VERSION = "1.2.2";
+    const APP_VERSION = "1.2.3";
 
     // === DEBUG & STARTUP ===
     console.log(`=== PulseChain Staking — v${APP_VERSION} ===`);
@@ -97,52 +101,65 @@
     let userAddress = null;
     let depositsData = [];
     let provider = null;
-    let currentRpc = null;
+    let rowStatuses = [];
+    let rowNotes = [];
+    let rowPubkeys = [];
+    let summaryOverride = null;
+    let listGeneration = 0;
+    let checkRun = 0;
+    let checkAbort = null;
+    let depositAbort = null;
+
+    // Keys this page has already submitted or seen confirmed. These stay
+    // deposited even when the beacon has not processed them yet.
+    const sessionDeposited = new Set();
+    const submittedPubkeys = new Set();
+    const beaconConfirmed = new Set();
+    const recentLogDeposits = new Set();
 
     // === RPC CONFIG ===
-    const PULSECHAIN_RPCS = [
+    // Execution endpoints: wallet network, receipt polling, deposit logs.
+    const EXECUTION_RPCS = [
       "https://rpc-pulsechain.g4mm4.io",
       "https://pulsechain-rpc.publicnode.com",
       "https://rpc.pulsechain.com",
       "https://rpc.gigatheminter.com"
     ];
 
-    const RPC_DISPLAY_NAMES = {
-      "https://rpc-pulsechain.g4mm4.io": "g4mm4",
-      "https://pulsechain-rpc.publicnode.com": "PublicNode",
-      "https://rpc.pulsechain.com": "pulsechain.com",
-      "https://rpc.gigatheminter.com": "GigaTheminter"
+    // Beacon endpoints only. An execution RPC that returns an empty HTTP 200
+    // for these paths must not be added here — that answer is not a validator
+    // lookup. Append another synced beacon API to require agreement before a
+    // key is marked ready.
+    const BEACON_ENDPOINTS = [
+      "https://rpc-pulsechain.g4mm4.io/beacon-api"
+    ];
+
+    const BEACON_DISPLAY_NAMES = {
+      "https://rpc-pulsechain.g4mm4.io/beacon-api": "g4mm4"
     };
 
-    function updateRpcStatus(rpc) {
+    const DEPOSIT_CONTRACT = "0x3693693693693693693693693693693693693693";
+    const DEPOSIT_LOOKBACK_SECONDS = 24 * 60 * 60;
+    const LOG_CHUNK_BLOCKS = 2000;
+    const BEACON_CHUNK_SIZE = 100;
+    const depositIface = new ethers.utils.Interface([
+      "event DepositEvent(bytes pubkey, bytes withdrawal_credentials, bytes amount, bytes signature, bytes index)"
+    ]);
+    const DEPOSIT_TOPIC = depositIface.getEventTopic("DepositEvent");
+
+    let healthyCache = { at: 0, urls: null };
+    let logCache = { at: 0, pubkeys: null };
+
+    const retryBtn = document.getElementById('retryBtn');
+
+    function updateBeaconStatus(bases) {
       if (!rpcStatusEl) return;
-      if (!rpc) {
-        rpcStatusEl.textContent = "";
+      if (!bases || !bases.length) {
+        rpcStatusEl.textContent = "Beacon unavailable";
         return;
       }
-      const name = RPC_DISPLAY_NAMES[rpc] || rpc;
-      rpcStatusEl.textContent = `Connected via ${name}`;
-    }
-
-    // === PULSECHAIN RPC ENDPOINTS (with fallback) ===
-    async function fetchBeacon(path) {
-      for (const rpc of PULSECHAIN_RPCS) {
-        try {
-          const res = await fetch(`${rpc}/beacon-api${path}`, {
-            signal: AbortSignal.timeout(7000)
-          });
-          if (res.ok) {
-            if (currentRpc !== rpc) {
-              currentRpc = rpc;
-              updateRpcStatus(currentRpc);
-            }
-            return res;
-          }
-        } catch (e) {
-          // try next RPC
-        }
-      }
-      throw new Error("All RPC endpoints failed");
+      const names = bases.map((base) => BEACON_DISPLAY_NAMES[base] || base);
+      rpcStatusEl.textContent = `Beacon via ${names.join(" + ")}`;
     }
 
     // === PULSECHAIN NETWORK SETUP ===
@@ -160,7 +177,7 @@
                 chainId: targetChainId,
                 chainName: 'PulseChain',
                 nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
-                rpcUrls: PULSECHAIN_RPCS,
+                rpcUrls: EXECUTION_RPCS,
                 blockExplorerUrls: ['https://otter-pulsechain.g4mm4.io/']
               }]
             });
@@ -188,9 +205,6 @@
         connectBtn.textContent = "Connected ✓";
         connectBtn.disabled = true;
         disconnectBtn.classList.remove('hidden');
-
-        // Show initial RPC (will be updated on first successful beacon call)
-        updateRpcStatus(PULSECHAIN_RPCS[0]);
       } catch (err) {
         connectStatus.innerHTML = `<span class="text-red-500">Connection failed</span>`;
       }
@@ -198,9 +212,16 @@
 
     // === DISCONNECT FUNCTION ===
     window.disconnectWallet = function() {
+      beginRun();
+      if (depositAbort) depositAbort.abort();
       userAddress = null;
       provider = null;
-      currentRpc = null;
+      depositsData = [];
+      rowStatuses = [];
+      rowNotes = [];
+      rowPubkeys = [];
+      summaryOverride = null;
+      listGeneration += 1;
       connectBtn.textContent = "Connect Wallet";
       connectBtn.disabled = false;
       disconnectBtn.classList.add('hidden');
@@ -209,92 +230,706 @@
       if (rpcStatusEl) rpcStatusEl.textContent = '';
       resultsDiv.classList.add('hidden');
       validatorListDiv.innerHTML = '';
+      if (summaryDiv) summaryDiv.textContent = '';
+      if (retryBtn) retryBtn.classList.add('hidden');
     };
 
     // === FILE UPLOAD HANDLER ===
     fileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
         try {
-          const parsed = JSON.parse(ev.target.result.trim());
-          depositsData = Array.isArray(parsed) ? parsed : (parsed.data || parsed.validators || []);
-          displayValidators(depositsData);
-        } catch (err) { alert("Invalid deposit_data file."); }
+          const parsed = JSON.parse(String(ev.target.result).trim());
+          const deposits = Array.isArray(parsed) ? parsed : (parsed && (parsed.data || parsed.validators));
+          if (!Array.isArray(deposits)) {
+            alert("Invalid deposit_data file.");
+            return;
+          }
+          depositsData = deposits;
+          displayValidators(deposits);
+        } catch (err) {
+          alert("Invalid deposit_data file.");
+        }
       };
       reader.readAsText(file);
     });
 
-    // === VALIDATOR DISPLAY ===
-    function displayValidators(deposits) {
-      validatorListDiv.innerHTML = '';
-      resultsDiv.classList.remove('hidden');
-      let readyCount = 0;
-      deposits.forEach((deposit, index) => {
-        const pubkey = cleanHex(deposit.pubkey || deposit.public_key || "");
-        const div = document.createElement('div');
-        div.className = "bg-zinc-950 border border-cyan-900 rounded-2xl p-6 flex items-center";
-        div.innerHTML = `
-          <div class="flex-1">
-            <div class="flex items-center gap-3">
-              <span class="text-xs bg-zinc-900 px-3 py-1 rounded-full">Validator #${index+1}</span>
-              <button onclick="checkValidator('${pubkey}')" class="text-xs px-3 py-1 border border-cyan-700 hover:border-cyan-400 rounded-xl text-cyan-400 hover:bg-cyan-950 transition">
-                Check on g4mm4.io
-              </button>
-            </div>
-            <div class="font-mono text-sm text-cyan-400 break-all mt-2">${pubkey.slice(0,22)}...${pubkey.slice(-22)}</div>
-            <div id="status-${index}" class="text-sm mt-3 font-medium"></div>
-          </div>
-          <button id="btn-${index}" onclick="makeDeposit(${index})" class="px-10 py-4 rounded-2xl font-bold text-base"></button>
-        `;
-        validatorListDiv.appendChild(div);
-        checkPubkeyUsed(index, pubkey, () => { readyCount++; updateSummary(readyCount, deposits.length); });
+    // === HELPERS ===
+    function cleanHex(str) {
+      if (!str) return "0x";
+      str = String(str).trim();
+      return str.startsWith("0x") || str.startsWith("0X") ? "0x" + str.slice(2) : "0x" + str;
+    }
+
+    function normalizePubkey(value) {
+      if (value == null) return "";
+      const hex = String(value).trim().toLowerCase().replace(/^0x/, "");
+      if (!/^[0-9a-f]{96}$/.test(hex)) return "";
+      return "0x" + hex;
+    }
+
+    function pubkeyFromDeposit(deposit) {
+      if (!deposit || typeof deposit !== "object") return "";
+      return normalizePubkey(deposit.pubkey || deposit.public_key || "");
+    }
+
+    function isAbortError(err) {
+      return !!err && (err.name === "AbortError" || err.code === 20);
+    }
+
+    function beginRun() {
+      if (checkAbort) checkAbort.abort();
+      checkAbort = new AbortController();
+      checkRun += 1;
+      return { runId: checkRun, signal: checkAbort.signal };
+    }
+
+    function isCurrent(runId) {
+      return runId === checkRun;
+    }
+
+    function sleep(ms, signal) {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          if (signal) signal.removeEventListener("abort", onAbort);
+          resolve();
+        }, ms);
+        const onAbort = () => {
+          clearTimeout(timer);
+          reject(new DOMException("Aborted", "AbortError"));
+        };
+        if (signal) {
+          if (signal.aborted) onAbort();
+          else signal.addEventListener("abort", onAbort, { once: true });
+        }
       });
     }
 
-    // === PUBKEY STATUS CHECK ===
-    async function checkPubkeyUsed(index, rawPubkey, callback) {
+    function toHex(n) {
+      return "0x" + Number(n).toString(16);
+    }
+
+    async function fetchWithTimeout(url, options, signal, timeoutMs) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const onAbort = () => ctrl.abort();
+      if (signal) {
+        if (signal.aborted) ctrl.abort();
+        else signal.addEventListener("abort", onAbort, { once: true });
+      }
+      try {
+        return await fetch(url, Object.assign({}, options, { signal: ctrl.signal, cache: "no-store" }));
+      } catch (err) {
+        if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+        if (err && err.name === "AbortError") {
+          const timeoutErr = new Error("request timed out");
+          timeoutErr.timedOut = true;
+          throw timeoutErr;
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+        if (signal) signal.removeEventListener("abort", onAbort);
+      }
+    }
+
+    async function readJson(url, signal, timeoutMs) {
+      const res = await fetchWithTimeout(url, { headers: { accept: "application/json" } }, signal, timeoutMs);
+      const text = await res.text();
+      let json = null;
+      if (text) {
+        try { json = JSON.parse(text); } catch (err) { json = null; }
+      }
+      return { res, json };
+    }
+
+    // === SUMMARY AND ROW STATE ===
+    function renderSummary() {
+      if (!summaryDiv) return;
+      const total = rowStatuses.length;
+      let ready = 0;
+      let deposited = 0;
+      let unchecked = 0;
+      let checking = 0;
+      for (const status of rowStatuses) {
+        if (status === "ready") ready += 1;
+        else if (status === "deposited") deposited += 1;
+        else if (status === "unchecked") unchecked += 1;
+        else checking += 1;
+      }
+      if (summaryOverride) {
+        summaryDiv.textContent = summaryOverride;
+        if (retryBtn) retryBtn.classList.add("hidden");
+        refreshRetryButtons();
+        return;
+      }
+      if (checking > 0) {
+        summaryDiv.textContent = `Checking ${total - checking}/${total}`;
+        if (retryBtn) retryBtn.classList.add("hidden");
+        refreshRetryButtons();
+        return;
+      }
+      summaryDiv.textContent = `${ready} of ${total} ready · ${deposited} deposited · ${unchecked} not checked`;
+      if (retryBtn) retryBtn.classList.toggle("hidden", unchecked === 0);
+      refreshRetryButtons();
+    }
+
+    function setStatusMessage(statusEl, className, text) {
+      statusEl.replaceChildren();
+      const span = document.createElement("span");
+      span.className = className;
+      span.textContent = text;
+      statusEl.appendChild(span);
+    }
+
+    function checkInProgress() {
+      return rowStatuses.some((status) => status === "checking");
+    }
+
+    function applyRowStatus(index, status) {
       const statusEl = document.getElementById(`status-${index}`);
       const btn = document.getElementById(`btn-${index}`);
-      let pubkey = cleanHex(rawPubkey);
-      try {
-        let response = await fetchBeacon(`/eth/v1/beacon/states/head/validators/${pubkey}`);
-        if (response.status === 400) {
-          response = await fetchBeacon(`/eth/v1/beacon/states/head/validators/${pubkey.slice(2)}`);
+      if (!statusEl || !btn) return;
+      const base = "px-10 py-4 rounded-2xl font-bold text-base whitespace-nowrap shrink-0";
+      btn.disabled = true;
+      if (status === "checking") {
+        setStatusMessage(statusEl, "text-gray-400", "Checking…");
+        btn.textContent = "Checking";
+        btn.className = base + " bg-zinc-800 text-gray-400 cursor-wait";
+      } else if (status === "deposited") {
+        setStatusMessage(statusEl, "text-red-400", "Already Deposited ❌");
+        btn.textContent = "Already Deposited";
+        btn.className = base + " bg-red-700 cursor-not-allowed";
+      } else if (status === "ready") {
+        setStatusMessage(statusEl, "text-cyan-400", "Ready for deposit ✅");
+        btn.textContent = "Deposit with Wallet";
+        btn.disabled = false;
+        btn.className = base + " bg-gradient-to-r from-purple-600 via-cyan-500 to-cyan-400 hover:from-purple-700 hover:via-cyan-600 hover:to-cyan-500";
+      } else {
+        setStatusMessage(statusEl, "text-amber-400", rowNotes[index] || "Could not verify. Deposit disabled.");
+        btn.textContent = "Retry check";
+        btn.disabled = checkInProgress();
+        btn.className = base + " bg-zinc-800 text-amber-300" + (btn.disabled ? " cursor-not-allowed" : "");
+      }
+    }
+
+    function refreshRetryButtons() {
+      const locked = checkInProgress();
+      rowStatuses.forEach((status, index) => {
+        if (status !== "unchecked") return;
+        const btn = document.getElementById(`btn-${index}`);
+        if (!btn) return;
+        btn.disabled = locked;
+        btn.classList.toggle("cursor-not-allowed", locked);
+      });
+    }
+
+    function setRow(index, status, note) {
+      rowStatuses[index] = status;
+      rowNotes[index] = note || "";
+      applyRowStatus(index, status);
+      renderSummary();
+    }
+
+    function publish(index, status, note, runId) {
+      if (!isCurrent(runId)) return;
+      setRow(index, status, note);
+    }
+
+    function alreadyKnown(pubkey) {
+      return sessionDeposited.has(pubkey) || submittedPubkeys.has(pubkey) || beaconConfirmed.has(pubkey) || recentLogDeposits.has(pubkey);
+    }
+
+    function combineBeaconVotes(present, absent) {
+      if (present > 0 && absent > 0) return "disagree";
+      if (present > 0) return "present";
+      if (absent > 0) return "absent";
+      return "unknown";
+    }
+
+    function verdictToStatus(verdict, logsOk, inLogs) {
+      if (verdict === "present" || inLogs) return { status: "deposited", note: "" };
+      if (verdict === "absent" && logsOk) return { status: "ready", note: "" };
+      if (verdict === "disagree") {
+        return { status: "unchecked", note: logsOk ? "Beacon nodes disagreed. Deposit disabled." : "Could not verify this stake. Deposit disabled." };
+      }
+      if (verdict === "absent") {
+        return { status: "unchecked", note: "Deposit history could not be checked. Deposit disabled." };
+      }
+      return { status: "unchecked", note: "Beacon check failed. Deposit disabled." };
+    }
+
+    function onRowButton(index) {
+      if (rowStatuses[index] === "ready") window.makeDeposit(index);
+      else if (rowStatuses[index] === "unchecked") retryIndexes([index]);
+    }
+
+    // === VALIDATOR DISPLAY ===
+    function sameDepositRow(generation, index, pubkey) {
+      return listGeneration === generation && rowPubkeys[index] === pubkey;
+    }
+
+    function releaseSubmitted(pubkey) {
+      submittedPubkeys.delete(pubkey);
+      rowPubkeys.forEach((rowPk, index) => {
+        if (rowPk !== pubkey || rowStatuses[index] !== "deposited") return;
+        if (sessionDeposited.has(pubkey) || beaconConfirmed.has(pubkey) || recentLogDeposits.has(pubkey)) return;
+        setRow(index, "ready", "");
+      });
+    }
+
+    function oldestLookbackBlock(headNumber) {
+      const blocks = Math.ceil((DEPOSIT_LOOKBACK_SECONDS + 6 * 60 * 60) / 8);
+      return Math.max(0, headNumber - blocks);
+    }
+
+    function displayValidators(deposits) {
+      if (depositAbort) depositAbort.abort();
+      const run = beginRun();
+      listGeneration += 1;
+      summaryOverride = "Checking beacon…";
+      validatorListDiv.innerHTML = "";
+      resultsDiv.classList.remove("hidden");
+      rowStatuses = [];
+      rowNotes = [];
+      rowPubkeys = [];
+
+      deposits.forEach((deposit, index) => {
+        const pubkey = pubkeyFromDeposit(deposit);
+        const raw = deposit && (deposit.pubkey || deposit.public_key) ? String(deposit.pubkey || deposit.public_key) : "";
+        rowPubkeys[index] = pubkey;
+        rowStatuses[index] = "checking";
+        rowNotes[index] = "";
+
+        const div = document.createElement("div");
+        div.className = "bg-zinc-950 border border-cyan-900 rounded-2xl p-6 flex flex-col gap-4 sm:flex-row sm:items-center";
+
+        const left = document.createElement("div");
+        left.className = "flex-1 min-w-0";
+
+        const top = document.createElement("div");
+        top.className = "flex items-center gap-3 flex-wrap";
+
+        const badge = document.createElement("span");
+        badge.className = "text-xs bg-zinc-900 px-3 py-1 rounded-full";
+        badge.textContent = `Validator #${index + 1}`;
+
+        const checkBtn = document.createElement("button");
+        checkBtn.type = "button";
+        checkBtn.className = "text-xs px-3 py-1 border border-cyan-700 hover:border-cyan-400 rounded-xl text-cyan-400 hover:bg-cyan-950 transition";
+        checkBtn.textContent = "Check on g4mm4.io";
+        checkBtn.addEventListener("click", () => {
+          if (pubkey) window.open(`https://www.g4mm4.io/validator/${pubkey}`, "_blank", "noopener");
+        });
+
+        const pkEl = document.createElement("div");
+        pkEl.className = "font-mono text-sm text-cyan-400 break-all mt-2";
+        const shown = pubkey || raw;
+        pkEl.textContent = shown.length > 46 ? `${shown.slice(0, 22)}...${shown.slice(-22)}` : shown;
+
+        const statusEl = document.createElement("div");
+        statusEl.id = `status-${index}`;
+        statusEl.className = "text-sm mt-3 font-medium break-words";
+
+        const btn = document.createElement("button");
+        btn.id = `btn-${index}`;
+        btn.type = "button";
+        btn.addEventListener("click", () => onRowButton(index));
+
+        top.append(badge, checkBtn);
+        left.append(top, pkEl, statusEl);
+        div.append(left, btn);
+        validatorListDiv.appendChild(div);
+        applyRowStatus(index, "checking");
+      });
+      renderSummary();
+      void resolveIndexes(deposits, deposits.map((_, index) => index), run.runId, run.signal);
+    }
+
+    function retryIndexes(indexes) {
+      const pending = indexes.filter((index) => rowStatuses[index] === "unchecked");
+      if (!pending.length || !depositsData.length) return;
+      const run = beginRun();
+      summaryOverride = "Checking beacon…";
+      pending.forEach((index) => {
+        rowStatuses[index] = "checking";
+        rowNotes[index] = "";
+        applyRowStatus(index, "checking");
+      });
+      renderSummary();
+      void resolveIndexes(depositsData, pending, run.runId, run.signal);
+    }
+
+    if (retryBtn) {
+      retryBtn.addEventListener("click", () => {
+        const indexes = [];
+        rowStatuses.forEach((status, index) => {
+          if (status === "unchecked") indexes.push(index);
+        });
+        retryIndexes(indexes);
+      });
+    }
+
+    // === STAKE LOOKUPS ===
+    async function beaconIsHealthy(base, signal) {
+      const version = await readJson(`${base}/eth/v1/node/version`, signal, 8000);
+      if (!version.res.ok || typeof version.json?.data?.version !== "string" || !version.json.data.version) return false;
+
+      const sync = await readJson(`${base}/eth/v1/node/syncing`, signal, 8000);
+      const syncData = sync.json?.data;
+      const headSlot = Number(syncData && syncData.head_slot);
+      if (!sync.res.ok || !syncData || syncData.is_syncing !== false || syncData.el_offline !== false || syncData.is_optimistic !== false || !(headSlot > 0)) {
+        return false;
+      }
+
+      const one = await readJson(`${base}/eth/v1/beacon/states/head/validators/1`, signal, 8000);
+      if (!one.res.ok || !one.json || one.json.execution_optimistic === true) return false;
+      if (!normalizePubkey(one.json.data?.validator?.pubkey)) return false;
+      return true;
+    }
+
+    async function getHealthyBeacons(signal) {
+      const now = Date.now();
+      if (healthyCache.urls && healthyCache.urls.length && now - healthyCache.at < 60000) {
+        updateBeaconStatus(healthyCache.urls);
+        return healthyCache.urls.slice();
+      }
+      const urls = [];
+      for (const base of BEACON_ENDPOINTS) {
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        try {
+          if (await beaconIsHealthy(base, signal)) urls.push(base);
+        } catch (err) {
+          if (isAbortError(err) || signal.aborted) throw err;
         }
-        if (response.ok) {
-          const json = await response.json();
-          if (json.data && json.data.validator) {
-            statusEl.innerHTML = `<span class="text-red-400">Already Deposited ❌</span>`;
-            btn.textContent = "Already Deposited";
-            btn.classList.add('bg-red-700', 'cursor-not-allowed');
-            btn.disabled = true;
-            return;
+      }
+      if (urls.length) healthyCache = { at: Date.now(), urls: urls.slice() };
+      updateBeaconStatus(urls);
+      console.log(`[Stake check] beacon: ${urls.join(", ") || "none"}`);
+      return urls;
+    }
+
+    async function queryBeaconChunk(base, ids, signal) {
+      let delay = 800;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        let res;
+        try {
+          res = await fetchWithTimeout(`${base}/eth/v1/beacon/states/head/validators`, {
+            method: "POST",
+            headers: { "content-type": "application/json", accept: "application/json" },
+            // null asks for every status. An empty list matches nothing and would
+            // make deposited keys look available.
+            body: JSON.stringify({ ids, statuses: null })
+          }, signal, 15000);
+        } catch (err) {
+          if (isAbortError(err) || signal.aborted) throw err;
+          if (attempt === 4) return { ok: false };
+          await sleep(delay, signal);
+          delay = Math.min(delay * 2, 10000);
+          continue;
+        }
+
+        if (res.status === 429 || res.status >= 500) {
+          const retryAfter = Number(res.headers.get("retry-after"));
+          const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : delay;
+          delay = Math.min(delay * 2, 10000);
+          if (attempt === 4) return { ok: false };
+          await sleep(waitMs, signal);
+          continue;
+        }
+
+        const text = await res.text();
+        let json = null;
+        try { json = text ? JSON.parse(text) : null; } catch (err) { json = null; }
+        if (!res.ok || !json || !Array.isArray(json.data)) return { ok: false };
+
+        const present = new Set();
+        for (const entry of json.data) {
+          const pubkey = normalizePubkey(entry && entry.validator && entry.validator.pubkey);
+          if (pubkey) present.add(pubkey);
+        }
+        return { ok: true, optimistic: json.execution_optimistic === true, present };
+      }
+      return { ok: false };
+    }
+
+    async function beaconClassify(pubkeys, signal, onChunk) {
+      const nodes = await getHealthyBeacons(signal);
+      const verdicts = new Map();
+      if (!nodes.length) {
+        pubkeys.forEach((pubkey) => verdicts.set(pubkey, "unknown"));
+        return verdicts;
+      }
+
+      const chunkCount = Math.ceil(pubkeys.length / BEACON_CHUNK_SIZE) || 1;
+      for (let offset = 0, chunkIndex = 0; offset < pubkeys.length; offset += BEACON_CHUNK_SIZE, chunkIndex += 1) {
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        const chunk = pubkeys.slice(offset, offset + BEACON_CHUNK_SIZE);
+        const replies = await Promise.all(nodes.map(async (base) => {
+          try {
+            return await queryBeaconChunk(base, chunk, signal);
+          } catch (err) {
+            if (isAbortError(err) || signal.aborted) throw err;
+            return { ok: false };
+          }
+        }));
+
+        chunk.forEach((pubkey) => {
+          let present = 0;
+          let absent = 0;
+          replies.forEach((reply) => {
+            if (!reply.ok) return;
+            if (reply.present.has(pubkey)) present += 1;
+            else if (!reply.optimistic) absent += 1;
+          });
+          verdicts.set(pubkey, combineBeaconVotes(present, absent));
+        });
+
+        if (onChunk) onChunk(chunk, verdicts);
+        if (offset + BEACON_CHUNK_SIZE < pubkeys.length) await sleep(200, signal);
+        if (chunkIndex + 1 < chunkCount && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      }
+      return verdicts;
+    }
+
+    async function rpcCall(url, method, params, signal) {
+      const res = await fetchWithTimeout(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+      }, signal, 20000);
+      const text = await res.text();
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch (err) { json = null; }
+      if (!res.ok || !json || json.error || !("result" in json)) {
+        const err = new Error((json && json.error && json.error.message) || `RPC HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      return json.result;
+    }
+
+    async function getHead(signal) {
+      let lastErr;
+      for (const url of EXECUTION_RPCS) {
+        try {
+          const hex = await rpcCall(url, "eth_blockNumber", [], signal);
+          const block = await rpcCall(url, "eth_getBlockByNumber", [hex, false], signal);
+          const number = block ? parseInt(block.number, 16) : NaN;
+          const timestamp = block ? parseInt(block.timestamp, 16) : NaN;
+          if (!Number.isFinite(number) || !Number.isFinite(timestamp)) throw new Error("missing chain head");
+          return { url, number, timestamp };
+        } catch (err) {
+          if (isAbortError(err) || signal.aborted) throw err;
+          lastErr = err;
+        }
+      }
+      throw lastErr || new Error("could not read chain head");
+    }
+
+    async function getLogsRange(fromBlock, toBlock, signal) {
+      let lastErr;
+      for (const url of EXECUTION_RPCS) {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const result = await rpcCall(url, "eth_getLogs", [{
+              address: DEPOSIT_CONTRACT,
+              topics: [DEPOSIT_TOPIC],
+              fromBlock: toHex(fromBlock),
+              toBlock: toHex(toBlock)
+            }], signal);
+            if (!Array.isArray(result)) throw new Error("logs were not a list");
+            return result;
+          } catch (err) {
+            if (isAbortError(err) || signal.aborted) throw err;
+            lastErr = err;
+            const rateLimited = err.status === 429 || /rate|limit|too many/i.test(err.message || "");
+            if (rateLimited && attempt < 3) {
+              await sleep(500 * attempt, signal);
+              continue;
+            }
+            break;
           }
         }
-      } catch (e) {}
-      statusEl.innerHTML = `<span class="text-cyan-400">Ready for deposit ✅</span>`;
-      btn.textContent = "Deposit with Wallet";
-      btn.classList.add('bg-gradient-to-r', 'from-purple-600', 'via-cyan-500', 'to-cyan-400', 'hover:from-purple-700', 'hover:via-cyan-600', 'hover:to-cyan-500');
-      callback();
+      }
+      throw lastErr || new Error("deposit log lookup failed");
     }
 
-    // === HELPER: CLEAN HEX ===
-    function cleanHex(str) {
-      if (!str) return "0x";
-      str = str.trim();
-      return str.startsWith("0x") ? str : "0x" + str;
+    async function lookbackStart(head, signal) {
+      const targetTs = head.timestamp - DEPOSIT_LOOKBACK_SECONDS;
+      const oldest = oldestLookbackBlock(head.number);
+      const overshoot = Math.max(oldest, head.number - Math.ceil(DEPOSIT_LOOKBACK_SECONDS / 8));
+      let guess = Math.max(oldest, head.number - Math.ceil(DEPOSIT_LOOKBACK_SECONDS / 10));
+      const clamp = (blockNumber) => {
+        if (!Number.isFinite(blockNumber)) return oldest;
+        return Math.min(head.number, Math.max(oldest, Math.floor(blockNumber)));
+      };
+      try {
+        const block = await rpcCall(head.url, "eth_getBlockByNumber", [toHex(guess), false], signal);
+        const ts = block ? parseInt(block.timestamp, 16) : NaN;
+        if (!Number.isFinite(ts) || !Number.isFinite(head.timestamp)) return clamp(overshoot);
+        const span = Math.max(head.number - guess, 1);
+        const avg = Math.max((head.timestamp - ts) / span, 1);
+        if (ts > targetTs) {
+          return clamp(guess - Math.ceil((ts - targetTs) / avg) - 5);
+        }
+        return clamp(guess + Math.floor((targetTs - ts) / avg));
+      } catch (err) {
+        if (isAbortError(err) || signal.aborted) throw err;
+        return clamp(overshoot);
+      }
     }
 
-    // === SUMMARY UPDATER ===
-    function updateSummary(readyCount, total) {
-      summaryDiv.textContent = `${readyCount} of ${total} ready for deposit`;
+    async function scanDepositLogs(signal) {
+      const head = await getHead(signal);
+      const fromBlock = Math.min(head.number, await lookbackStart(head, signal));
+      const found = new Set();
+      for (let start = fromBlock; start <= head.number; start += LOG_CHUNK_BLOCKS) {
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        const end = Math.min(head.number, start + LOG_CHUNK_BLOCKS - 1);
+        const logs = await getLogsRange(start, end, signal);
+        for (const log of logs) {
+          if (log.removed === true) continue;
+          try {
+            const parsed = depositIface.parseLog(log);
+            const pubkey = normalizePubkey(parsed.args.pubkey);
+            if (pubkey) found.add(pubkey);
+          } catch (err) {
+            // Skip a log this decoder does not understand.
+          }
+        }
+      }
+      return found;
+    }
+
+    async function findDepositedPubkeys(signal) {
+      if (logCache.pubkeys && Date.now() - logCache.at < 30000) return logCache.pubkeys;
+      const pubkeys = await scanDepositLogs(signal);
+      logCache = { at: Date.now(), pubkeys };
+      return pubkeys;
+    }
+
+    async function classifyPubkeys(pubkeys, signal, hooks) {
+      const out = new Map();
+      if (!pubkeys.length) return out;
+      if (hooks && hooks.onBeaconStart) hooks.onBeaconStart();
+      const verdicts = await beaconClassify(pubkeys, signal, (chunk, chunkVerdicts) => {
+        if (hooks && hooks.onBeaconChunk) hooks.onBeaconChunk(chunk, chunkVerdicts);
+      });
+
+      const needLogs = pubkeys.filter((pubkey) => verdicts.get(pubkey) !== "present");
+      let logsOk = false;
+      let logSet = new Set();
+      if (needLogs.length) {
+        if (hooks && hooks.onLogsStart) hooks.onLogsStart();
+        try {
+          logSet = await findDepositedPubkeys(signal);
+          logsOk = true;
+        } catch (err) {
+          if (isAbortError(err) || signal.aborted) throw err;
+          console.warn("[Stake check] deposit history lookup failed");
+          logsOk = false;
+        }
+      }
+
+      pubkeys.forEach((pubkey) => {
+        const verdict = verdicts.get(pubkey) || "unknown";
+        if (verdict === "present") beaconConfirmed.add(pubkey);
+        const inLogs = logsOk && logSet.has(pubkey);
+        if (inLogs) recentLogDeposits.add(pubkey);
+        out.set(pubkey, verdictToStatus(verdict, logsOk, inLogs));
+      });
+      return out;
+    }
+
+    async function resolveIndexes(deposits, indexes, runId, signal) {
+      try {
+        const pending = [];
+        indexes.forEach((index) => {
+          if (!isCurrent(runId)) return;
+          const pubkey = pubkeyFromDeposit(deposits[index]);
+          rowPubkeys[index] = pubkey;
+          if (!pubkey) {
+            publish(index, "unchecked", "This pubkey could not be checked.", runId);
+            return;
+          }
+          if (alreadyKnown(pubkey)) {
+            publish(index, "deposited", "", runId);
+            return;
+          }
+          pending.push({ index, pubkey });
+        });
+        if (!isCurrent(runId)) return;
+        if (!pending.length) {
+          summaryOverride = null;
+          renderSummary();
+          return;
+        }
+
+        const unique = [...new Set(pending.map((item) => item.pubkey))];
+        const classified = await classifyPubkeys(unique, signal, {
+          onBeaconStart() {
+            if (!isCurrent(runId)) return;
+            summaryOverride = "Checking beacon…";
+            renderSummary();
+          },
+          onBeaconChunk(chunk, verdicts) {
+            if (!isCurrent(runId)) return;
+            summaryOverride = null;
+            chunk.forEach((pubkey) => {
+              if (verdicts.get(pubkey) !== "present") return;
+              beaconConfirmed.add(pubkey);
+              pending.forEach((item) => {
+                if (item.pubkey === pubkey && rowStatuses[item.index] === "checking") {
+                  publish(item.index, "deposited", "", runId);
+                }
+              });
+            });
+            if (isCurrent(runId)) renderSummary();
+          },
+          onLogsStart() {
+            if (!isCurrent(runId)) return;
+            summaryOverride = "Checking recent deposits…";
+            renderSummary();
+          }
+        });
+        if (!isCurrent(runId)) return;
+
+        summaryOverride = null;
+        pending.forEach((item) => {
+          if (!isCurrent(runId)) return;
+          if (alreadyKnown(item.pubkey)) {
+            if (rowStatuses[item.index] === "checking") publish(item.index, "deposited", "", runId);
+            return;
+          }
+          const decision = classified.get(item.pubkey) || { status: "unchecked", note: "Beacon check failed. Deposit disabled." };
+          publish(item.index, decision.status, decision.note, runId);
+        });
+        if (!isCurrent(runId)) return;
+        summaryOverride = null;
+        renderSummary();
+      } catch (err) {
+        if (isAbortError(err) || signal.aborted || !isCurrent(runId)) return;
+        console.warn("[Stake check] failed", err);
+        summaryOverride = null;
+        indexes.forEach((index) => {
+          if (rowStatuses[index] === "checking") {
+            publish(index, "unchecked", "Stake check failed. Deposit disabled.", runId);
+          }
+        });
+        renderSummary();
+      }
     }
 
     // === OPEN VALIDATOR CHECK ===
     window.checkValidator = function(pubkey) {
-      window.open(`https://www.g4mm4.io/validator/${pubkey}`, '_blank');
+      const normalized = normalizePubkey(pubkey);
+      if (!normalized) return;
+      window.open(`https://www.g4mm4.io/validator/${normalized}`, "_blank", "noopener");
     };
 
     // === ROBUST TX CONFIRMATION (multi-RPC fallback) ===
@@ -303,7 +938,7 @@
       const pollInterval = 3000; // poll every 3s
 
       while (Date.now() - startTime < maxWaitMs) {
-        for (const rpcUrl of PULSECHAIN_RPCS) {
+        for (const rpcUrl of EXECUTION_RPCS) {
           try {
             const tempProvider = new ethers.providers.JsonRpcProvider(rpcUrl);
             const receipt = await tempProvider.getTransactionReceipt(txHash);
@@ -327,36 +962,69 @@
       return { success: false, receipt: null };
     }
 
+    function showDepositFailure(statusDiv, btn, message) {
+      if (!statusDiv || !btn) return;
+      setStatusMessage(statusDiv, "text-red-500", message);
+      btn.disabled = false;
+    }
+
     // === DEPOSIT FUNCTION ===
     window.makeDeposit = async function(index) {
+      if (rowStatuses[index] !== "ready") return;
       if (!userAddress) return alert("Please connect a wallet first");
       const deposit = depositsData[index];
       const btn = document.getElementById(`btn-${index}`);
-      if (btn.disabled) return;
+      const statusDiv = document.getElementById(`status-${index}`);
+      if (!deposit || !btn || !statusDiv || btn.disabled) return;
+
+      const generation = listGeneration;
+      const normalized = pubkeyFromDeposit(deposit);
+      if (!normalized || rowPubkeys[index] !== normalized) return;
 
       const pubkey = cleanHex(deposit.pubkey || deposit.public_key || "");
       const withdrawalCredentials = cleanHex(deposit.withdrawal_credentials || "");
       const signature = cleanHex(deposit.signature || "");
       const depositDataRoot = cleanHex(deposit.deposit_data_root || deposit.deposit_message_root || "");
 
-      const balance = await provider.getBalance(userAddress);
-      const plsBalance = parseFloat(ethers.utils.formatEther(balance));
-      if (plsBalance < 32000000.01) {
-        return alert(`Not enough PLS!\n\nYou have ${plsBalance.toFixed(4)} PLS\nNeed at least 32,000,000.01 PLS`);
-      }
-
-      if (!confirm(`Deposit 32,000,000 PLS for Validator #${index+1}?`)) return;
-
-      // Disable button immediately to prevent double-clicks during async processing
-      btn.disabled = true;
-
-      const statusDiv = document.getElementById(`status-${index}`);
-      statusDiv.innerHTML = `<span class="text-yellow-400">Sending transaction...</span>`;
-
+      let phase = "balance";
+      let markedSubmitted = false;
       try {
+        const balance = await provider.getBalance(userAddress);
+        if (!sameDepositRow(generation, index, normalized) || rowStatuses[index] !== "ready") return;
+        const plsBalance = parseFloat(ethers.utils.formatEther(balance));
+        if (plsBalance < 32000000.01) {
+          return alert(`Not enough PLS!\n\nYou have ${plsBalance.toFixed(4)} PLS\nNeed at least 32,000,000.01 PLS`);
+        }
+
+        if (!confirm(`Deposit 32,000,000 PLS for Validator #${index + 1}?`)) return;
+        if (!sameDepositRow(generation, index, normalized) || rowStatuses[index] !== "ready") return;
+
+        btn.disabled = true;
+        setStatusMessage(statusDiv, "text-yellow-400", "Checking once more…");
+
+        phase = "recheck";
+        if (depositAbort) depositAbort.abort();
+        depositAbort = new AbortController();
+        const signal = depositAbort.signal;
+        const classified = await classifyPubkeys([normalized], signal);
+        if (signal.aborted || !sameDepositRow(generation, index, normalized)) return;
+
+        const decision = classified.get(normalized);
+        if (!decision || decision.status !== "ready") {
+          setRow(index, decision ? decision.status : "unchecked", decision ? decision.note : "Could not recheck this stake. Deposit disabled.");
+          alert("This validator is not available to deposit. The transaction was not sent.");
+          return;
+        }
+
+        phase = "send";
+        submittedPubkeys.add(normalized);
+        markedSubmitted = true;
+        depositAbort = null;
+        setStatusMessage(statusDiv, "text-yellow-400", "Sending transaction...");
+
         const signer = provider.getSigner();
         const contract = new ethers.Contract(
-          "0x3693693693693693693693693693693693693693",
+          DEPOSIT_CONTRACT,
           ["function deposit(bytes calldata pubkey, bytes calldata withdrawal_credentials, bytes calldata signature, bytes32 deposit_data_root) payable"],
           signer
         );
@@ -368,7 +1036,18 @@
           maxPriorityFeePerGas: ethers.utils.parseUnits("0.005", "gwei")
         });
 
-        statusDiv.innerHTML = `⏳ <a href="https://otter-pulsechain.g4mm4.io/tx/${tx.hash}" target="_blank" class="underline">View on explorer</a>`;
+        if (sameDepositRow(generation, index, normalized)) {
+          statusDiv.replaceChildren();
+          const pending = document.createElement("span");
+          pending.textContent = "⏳ ";
+          const link = document.createElement("a");
+          link.href = `https://otter-pulsechain.g4mm4.io/tx/${tx.hash}`;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.className = "underline";
+          link.textContent = "View on explorer";
+          statusDiv.append(pending, link);
+        }
 
         // Primary wait (fast if wallet RPC is healthy) + multi-RPC fallback
         let confirmationResult;
@@ -381,20 +1060,51 @@
         }
 
         if (confirmationResult.success) {
-          statusDiv.innerHTML = `<span class="text-cyan-400">✅ Deposit confirmed!</span>`;
+          sessionDeposited.add(normalized);
+          submittedPubkeys.delete(normalized);
+          markedSubmitted = false;
+          if (!sameDepositRow(generation, index, normalized)) return;
+          rowStatuses[index] = "deposited";
+          rowNotes[index] = "";
+          renderSummary();
+          setStatusMessage(statusDiv, "text-cyan-400", "✅ Deposit confirmed!");
           btn.textContent = "Deposited ✓";
-          btn.classList.add('bg-zinc-800', 'cursor-not-allowed');
+          btn.className = "px-10 py-4 rounded-2xl font-bold text-base whitespace-nowrap shrink-0 bg-zinc-800 cursor-not-allowed";
           btn.disabled = true;
-        } else {
-          statusDiv.innerHTML = `<span class="text-red-500">Transaction failed or not yet confirmed</span>`;
+        } else if (sameDepositRow(generation, index, normalized)) {
+          releaseSubmitted(normalized);
+          markedSubmitted = false;
+          showDepositFailure(statusDiv, btn, "Transaction failed or not yet confirmed");
           alert("Transaction may have failed, been replaced, or is still pending. Please check the explorer link above.");
-          btn.disabled = false; // allow retry
+        } else {
+          releaseSubmitted(normalized);
+          markedSubmitted = false;
         }
       } catch (err) {
+        if (isAbortError(err)) {
+          if (markedSubmitted) releaseSubmitted(normalized);
+          return;
+        }
         console.error(err);
+        if (markedSubmitted) {
+          releaseSubmitted(normalized);
+          markedSubmitted = false;
+        }
+        if (!sameDepositRow(generation, index, normalized)) return;
+
+        if (phase === "balance") {
+          btn.disabled = false;
+          alert("Could not read the wallet balance. Check the connection and try again.");
+          return;
+        }
+        if (phase === "recheck") {
+          setRow(index, "unchecked", "Could not recheck this stake. Deposit disabled.");
+          alert("Could not recheck this validator. The deposit was not sent.");
+          return;
+        }
+
         let msg = "Transaction failed";
         const lowerMsg = (err.message || "").toLowerCase();
-
         if (err.code === 4001 || lowerMsg.includes("user rejected") || lowerMsg.includes("denied")) {
           msg = "Transaction rejected by user";
         } else if (lowerMsg.includes("insufficient funds")) {
@@ -403,9 +1113,8 @@
           msg = "Gas estimation / price error";
         }
 
-        statusDiv.innerHTML = `<span class="text-red-500">${msg}</span>`;
+        showDepositFailure(statusDiv, btn, msg);
         alert(`${msg}. Check your wallet and try again.`);
-        btn.disabled = false; // allow retry
       }
     };
   </script>

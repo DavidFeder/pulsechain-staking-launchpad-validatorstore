@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-10-28
+
+### Fixed
+- Stake availability no longer counts a failed, rate-limited, or empty RPC response as ready to deposit. The same deposit file could previously finish with different ready counts, including every key looking available.
+- Deposit buttons stay disabled until that key is confirmed absent from the beacon chain and from recent deposit-contract history. A lookup that does not succeed leaves the key unchecked.
+- Choosing a deposit file again cancels the check already in flight, so a late response cannot overwrite the new list or its count.
+- The summary still renders when nothing is ready, including while the check is running.
+
+### Added
+- Validator lookups are batched to healthy beacon endpoints (about 100 keys at a time) with backoff when a node responds 429, instead of one request per key fired all at once.
+- A beacon endpoint is used only after it reports a synced node and returns a real validator payload. If more than one healthy beacon is configured, a key is ready only when they agree it is absent, and any node seeing it as present blocks the deposit.
+- Recent deposit-contract logs cover the wait before a confirmed deposit appears on the beacon chain. Keys deposited in this session stay marked deposited even if that lookup is still catching up.
+- The summary counts ready, already deposited, and not checked. Unverified keys can be retried without sending a deposit.
+- The deposit is checked once more immediately before the transaction is sent.
+
+### Changed
+- The header names the beacon endpoint that passed the health check. Execution RPCs remain the wallet, receipt, and deposit-log path.
+
 ## [1.2.2] - 2026-06-10
 
 ### Fixed
@@ -72,7 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for Internet Money Wallet and MetaMask.
 - Completely local operation (no data uploaded to servers).
 
-[Unreleased]: https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/compare/v1.2.3...HEAD
+[1.2.3]: https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/DavidFeder/pulsechain-staking-launchpad-validatorstore/compare/v1.1.1...v1.2.0
